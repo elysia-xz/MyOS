@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.myos.habit.HabitMapper">
+
+  <select id="findByDate" resultType="com.myos.habit.HabitLog">
+    SELECT id, log_date, system_code, metric_value, target_value, done, note
+    FROM habit_log
+    WHERE user_id = #{userId} AND log_date = #{date}
+    ORDER BY id
+  </select>
+
+  <select id="findBetween" resultType="com.myos.habit.HabitLog">
+    SELECT id, log_date, system_code, metric_value, target_value, done, note
+    FROM habit_log
+    WHERE user_id = #{userId} AND log_date BETWEEN #{from} AND #{to}
+    ORDER BY log_date DESC, id
+  </select>
+
+  <insert id="upsert">
+    INSERT INTO habit_log(user_id, log_date, system_code, metric_value, target_value, done, note)
+    VALUES (#{userId}, #{log.logDate}, #{log.systemCode},
+            COALESCE(#{log.metricValue}, 0), #{log.targetValue},
+            COALESCE(#{log.done}, FALSE), #{log.note})
+    ON CONFLICT (user_id, log_date, system_code) DO UPDATE SET
+      metric_value = EXCLUDED.metric_value,
+      target_value = EXCLUDED.target_value,
+      done         = EXCLUDED.done,
+      note         = EXCLUDED.note,
+      updated_at   = CURRENT_TIMESTAMP
+  </insert>
+
+  <select id="sumBySystem" resultType="long">
+    SELECT COALESCE(SUM(metric_value), 0)
+    FROM habit_log
+    WHERE user_id = #{userId} AND system_code = #{systemCode}
+      AND log_date BETWEEN #{from} AND #{to}
+  </select>
+
+  <select id="countDoneBySystem" resultType="long">
+    SELECT COUNT(*)
+    FROM habit_log
+    WHERE user_id = #{userId} AND system_code = #{systemCode}
+      AND done = TRUE AND log_date BETWEEN #{from} AND #{to}
+  </select>
+
+  <select id="monthlyStats" resultType="map">
+    SELECT system_code AS "systemCode",
+           COUNT(*) FILTER (WHERE done = TRUE) AS "doneDays",
+           COUNT(*) AS "loggedDays",
+           COALESCE(SUM(metric_value), 0) AS "totalValue"
+    FROM habit_log
+    WHERE user_id = #{userId} AND log_date BETWEEN #{from} AND #{to}
+    GROUP BY system_code
+  </select>
+</mapper>

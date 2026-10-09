@@ -1,0 +1,15 @@
+# 统一换行符：仓库内一律存 LF
+# 原因：deploy/ 下有 4 个 shell 脚本，Windows 上若被检出成 CRLF，
+# 在 Git Bash 之外的环境执行会报 "bad interpreter"。
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# 二进制，别做换行转换
+*.png binary
+*.jpg binary
+*.ico binary
+*.jar binary
+*.woff binary
+*.woff2 binary

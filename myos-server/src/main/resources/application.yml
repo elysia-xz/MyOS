@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: myos-server
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:myos}
+    username: ${DB_USER:myos}
+    password: ${DB_PASSWORD:myos123}
+    driver-class-name: org.postgresql.Driver
+  sql:
+    init:
+      mode: never
+
+server:
+  port: 8080
+
+mybatis:
+  mapper-locations: classpath:/mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+
+logging:
+  level:
+    com.myos: INFO
+
+# AI 网关（对应 PRD §7.3）
+# V1 只对接一个模型，OpenAI 兼容协议。Key 只存后端，绝不下发前端。
+myos:
+  ai:
+    base-url: ${MYOS_AI_BASE_URL:https://api.deepseek.com}
+    model: ${MYOS_AI_MODEL:deepseek-chat}
+    api-key: ${MYOS_AI_API_KEY:}

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyOS V1.0 · 成长 Dashboard 预览</title>
+<style>
+:root{
+  --line:#e8eaed;--line2:#f0f1f2;--muted:#76808a;--faint:#939ba2;--surface:#fff;--accent:#182026;
+  --ok:#0f6e56;--ok-bg:#e1f5ee;--warn:#854f0b;--warn-bg:#faeeda;--danger:#a32d2d;--danger-bg:#fcebeb;
+  --info:#185fa5;--info-bg:#e6f1fb;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#f4f5f6;color:#182026;
+font-family:Inter,"Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:14px}
+.app-shell{min-height:100vh;display:flex}
+.sidebar{width:224px;background:#111518;color:#fff;padding:28px 18px 20px;display:flex;flex-direction:column;position:fixed;inset:0 auto 0 0}
+.brand{font-size:26px;font-weight:800;letter-spacing:-1px}
+.brand-sub{font-size:12px;opacity:.5;margin-top:3px;letter-spacing:.05em}
+nav{margin-top:32px;display:grid;gap:4px}
+.nav-item{border:0;background:transparent;color:rgba(255,255,255,.62);text-align:left;padding:11px 13px;border-radius:9px;font-size:14px;display:flex;align-items:center;gap:10px}
+.nav-item.active{background:rgba(255,255,255,.1);color:#fff}
+.nav-num{display:inline-flex;width:20px;height:20px;align-items:center;justify-content:center;border-radius:6px;background:rgba(255,255,255,.1);font-size:11px;font-weight:700}
+.nav-item.active .nav-num{background:#fff;color:#111518}
+.sidebar-bottom{margin-top:auto;font-size:11px;opacity:.32;padding:0 13px;line-height:1.7}
+.main{margin-left:224px;width:calc(100% - 224px);padding:40px 48px 70px;max-width:1320px}
+.page-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:26px;gap:16px}
+.page-head h1{margin:6px 0;font-size:32px;letter-spacing:-1.1px}
+.page-head p{margin:0;color:var(--muted);font-size:14px}
+.eyebrow{font-size:10.5px;font-weight:800;letter-spacing:.16em;color:var(--faint);text-transform:uppercase}
+.ghost{background:#fff;color:#111518;border:1px solid #111518;border-radius:10px;padding:10px 16px;font-size:13.5px;cursor:pointer}
+.tiny{padding:6px 11px;font-size:12px;border-radius:8px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 1px 2px rgba(16,24,40,.03)}
+.card-title{font-weight:700;margin-bottom:16px;font-size:14.5px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.card-title .hint{font-weight:400;font-size:12px;color:var(--faint)}
+.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.section-gap{margin-top:16px}
+.water-list{display:grid}
+.water-row{display:grid;grid-template-columns:92px 1fr 96px;align-items:center;gap:14px;padding:9px 0;border-top:1px solid var(--line2)}
+.water-row:first-child{border-top:0}
+.water-name{font-size:13px;font-weight:600}
+.bar-track{height:9px;background:#eef0f2;border-radius:99px;overflow:hidden}
+.bar-fill{height:100%;border-radius:99px;transition:width .6s ease}
+.bar-fill.ok{background:var(--ok)}
+.bar-fill.partial{background:#5f6a73}
+.water-val{font-size:12.5px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.done-mark{color:var(--ok);font-weight:700}
+.none{color:var(--faint)}
+.level-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 18px}
+.level-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--line2)}
+.level-row:nth-child(-n+3){border-top:0}
+.level-name{font-size:13px}
+.level-badge{font-size:12px;font-weight:800;padding:3px 9px;border-radius:7px;background:#f1f3f4;color:#3d464e}
+.level-badge.hi{background:var(--accent);color:#fff}
+.proj-name{font-size:15px;font-weight:700;margin:0 0 4px}
+.proj-desc{font-size:12.5px;color:var(--muted);margin:0 0 8px;min-height:20px}
+.progress{height:8px;background:#eef0f2;border-radius:99px;overflow:hidden;margin:12px 0 8px}
+.progress span{display:block;height:100%;background:var(--accent);border-radius:99px}
+.pct{font-size:12.5px;color:var(--muted);display:flex;justify-content:space-between}
+.sink-item{padding:11px 0;border-top:1px solid var(--line2);display:flex;gap:10px;align-items:baseline}
+.sink-item:first-child{border-top:0}
+.dot{width:6px;height:6px;border-radius:99px;background:var(--faint);flex:0 0 auto;transform:translateY(-2px)}
+.sink-item .txt{font-size:13.5px}
+.sink-item .meta{font-size:11.5px;color:var(--faint);margin-left:auto;white-space:nowrap}
+.ai-panel{background:#111518;border-radius:16px;padding:22px;color:#fff}
+.ai-title{font-size:14.5px;font-weight:700;margin:0 0 4px}
+.ai-sub{font-size:12.5px;opacity:.55;margin:0 0 18px}
+.ai-actions{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.ai-btn{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.14);color:#fff;border-radius:10px;padding:12px 14px;font-size:13px;text-align:left;cursor:pointer}
+.ai-btn:hover{background:rgba(255,255,255,.17)}
+.ai-out{margin-top:16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:16px}
+.ai-out pre{margin:0;white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.75;color:#e6e9eb}
+.banner{background:var(--info-bg);border:1px solid var(--info);border-radius:12px;padding:13px 18px;margin-bottom:20px;color:#042c53;font-size:13px}
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">MyOS</div>
+    <div class="brand-sub">私人工作台 V1.0</div>
+    <nav>
+      <button class="nav-item active"><span class="nav-num">0</span><span>首页</span></button>
+      <button class="nav-item"><span class="nav-num">1</span><span>今日</span></button>
+      <button class="nav-item"><span class="nav-num">2</span><span>学习</span></button>
+      <button class="nav-item"><span class="nav-num">3</span><span>输出</span></button>
+      <button class="nav-item"><span class="nav-num">4</span><span>项目</span></button>
+      <button class="nav-item"><span class="nav-num">5</span><span>财务</span></button>
+      <button class="nav-item"><span class="nav-num">6</span><span>复盘</span></button>
+    </nav>
+    <div class="sidebar-bottom">
+      <div style="margin-bottom:8px">Troy</div>
+      <div>6 模块 · 7 系统 · AI 贯穿</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="banner">
+      这是<b>设计预览</b>（静态演示数据）。真实数据由后端 <code>/api/dashboard</code> 聚合返回，启动 Spring Boot + PostgreSQL 后即为实时数据。
+    </div>
+
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">2026.10.08 周四</div>
+        <h1>今天，向前走一点。</h1>
+        <p>7 个系统里，已经有 5 个向前走了。任务完成率 33%。</p>
+      </div>
+      <button class="ghost">刷新</button>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title"><span>今日水位 · 7 大系统</span><button class="ghost tiny">去打点</button></div>
+        <div class="water-list">
+          <div class="water-row"><span class="water-name">AI 能力</span><div class="bar-track"><div class="bar-fill partial" style="width:75%"></div></div><span class="water-val">45 / 60 min</span></div>
+          <div class="water-row"><span class="water-name">技术能力</span><div class="bar-track"><div class="bar-fill ok" style="width:100%"></div></div><span class="water-val"><span class="done-mark">✓ 已达标</span></span></div>
+          <div class="water-row"><span class="water-name">内容能力</span><div class="bar-track"><div class="bar-fill ok" style="width:100%"></div></div><span class="water-val"><span class="done-mark">✓ 已达标</span></span></div>
+          <div class="water-row"><span class="water-name">英语与信息</span><div class="bar-track"><div class="bar-fill ok" style="width:100%"></div></div><span class="water-val"><span class="done-mark">✓ 已达标</span></span></div>
+          <div class="water-row"><span class="water-name">身体</span><div class="bar-track"><div class="bar-fill ok" style="width:100%"></div></div><span class="water-val"><span class="done-mark">✓ 已达标</span></span></div>
+          <div class="water-row"><span class="water-name">财务</span><div class="bar-track"><div class="bar-fill ok" style="width:100%"></div></div><span class="water-val"><span class="done-mark">✓ 已达标</span></span></div>
+          <div class="water-row"><span class="water-name">人际</span><div class="bar-track"><div class="bar-fill partial" style="width:0%"></div></div><span class="water-val"><span class="none">— 无记录</span></span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span>能力等级 · 长期积累</span><span class="hint">由累计数据自动计算</span></div>
+        <div class="level-grid">
+          <div class="level-row"><span class="level-name">AI 能力</span><span class="level-badge">Lv.03</span></div>
+          <div class="level-row"><span class="level-name">技术能力</span><span class="level-badge hi">Lv.04</span></div>
+          <div class="level-row"><span class="level-name">英语与信息</span><span class="level-badge">Lv.02</span></div>
+          <div class="level-row"><span class="level-name">内容能力</span><span class="level-badge">Lv.02</span></div>
+          <div class="level-row"><span class="level-name">身体</span><span class="level-badge">Lv.01</span></div>
+          <div class="level-row"><span class="level-name">财务</span><span class="level-badge">Lv.02</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2 section-gap">
+      <div class="card">
+        <div class="card-title"><span>本月项目</span><button class="ghost tiny">全部项目</button></div>
+        <div style="margin-bottom:18px">
+          <p class="proj-name">「MyOS 私人工作台」</p>
+          <p class="proj-desc">个人成长操作系统 V1.0</p>
+          <div class="progress"><span style="width:70%"></span></div>
+          <div class="pct"><span>70%</span><span>Vue3 / Spring Boot / PostgreSQL</span></div>
+        </div>
+        <div>
+          <p class="proj-name">「AI Prompt 管理工具」</p>
+          <p class="proj-desc">统一管理常用 Prompt 模板</p>
+          <div class="progress"><span style="width:100%"></span></div>
+          <div class="pct"><span>100% 已完成</span><span>Vue3 / IndexedDB</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span>本月完成度</span><span class="hint">按达标天数</span></div>
+        <div class="water-list">
+          <div class="water-row"><span class="water-name">内容能力</span><div class="bar-track"><div class="bar-fill partial" style="width:60%"></div></div><span class="water-val">18 / 30 天</span></div>
+          <div class="water-row"><span class="water-name">英语与信息</span><div class="bar-track"><div class="bar-fill partial" style="width:70%"></div></div><span class="water-val">21 / 30 天</span></div>
+          <div class="water-row"><span class="water-name">身体</span><div class="bar-track"><div class="bar-fill partial" style="width:53%"></div></div><span class="water-val">16 / 30 天</span></div>
+          <div class="water-row"><span class="water-name">AI 能力</span><div class="bar-track"><div class="bar-fill partial" style="width:80%"></div></div><span class="water-val">24 / 30 天</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2 section-gap">
+      <div class="card">
+        <div class="card-title"><span>最近沉淀</span><button class="ghost tiny">学习记录</button></div>
+        <div class="sink-item"><span class="dot"></span><span class="txt">Claude 代码分析能力实测</span><span class="meta">AI · 10-07</span></div>
+        <div class="sink-item"><span class="dot"></span><span class="txt">GitHub 开源项目目录结构分析</span><span class="meta">TECH · 10-06</span></div>
+        <div class="sink-item"><span class="dot"></span><span class="txt">GPT 工作流整理</span><span class="meta">AI · 10-05</span></div>
+        <div class="sink-item"><span class="dot"></span><span class="txt">行业报告：AI 编程工具对比</span><span class="meta">EN · 10-04</span></div>
+        <div class="sink-item"><span class="dot"></span><span class="txt">AI 编程实践笔记</span><span class="meta">TECH · 10-03</span></div>
+      </div>
+
+      <div class="ai-panel">
+        <p class="ai-title">今日 AI 助手</p>
+        <p class="ai-sub">基于今天的真实数据，不是空谈。</p>
+        <div class="ai-actions">
+          <button class="ai-btn">和 AI 讨论</button>
+          <button class="ai-btn">生成日报</button>
+          <button class="ai-btn">复盘今天</button>
+          <button class="ai-btn">本月总结</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

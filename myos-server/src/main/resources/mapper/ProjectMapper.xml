@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.myos.project.ProjectMapper">
+
+  <sql id="cols">
+    id, name, description, status, progress, start_date, target_date,
+    github_url, demo_url, problem_solved, tech_stack, cover_image,
+    difficulty, solution, finished_at
+  </sql>
+
+  <select id="findByUserId" resultType="com.myos.project.Project">
+    SELECT <include refid="cols"/>
+    FROM project
+    WHERE user_id = #{userId}
+    ORDER BY
+      CASE status WHEN 'IN_PROGRESS' THEN 1 WHEN 'PLANNED' THEN 2 ELSE 3 END,
+      id DESC
+  </select>
+
+  <select id="findById" resultType="com.myos.project.Project">
+    SELECT <include refid="cols"/>
+    FROM project
+    WHERE id = #{id} AND user_id = #{userId}
+  </select>
+
+  <insert id="insert" useGeneratedKeys="true" keyProperty="project.id">
+    INSERT INTO project(user_id, name, description, status, progress, start_date, target_date,
+                        github_url, demo_url, problem_solved, tech_stack, cover_image,
+                        difficulty, solution, finished_at)
+    VALUES (#{userId}, #{project.name}, #{project.description},
+            COALESCE(#{project.status}, 'PLANNED'), COALESCE(#{project.progress}, 0),
+            #{project.startDate}, #{project.targetDate}, #{project.githubUrl}, #{project.demoUrl},
+            #{project.problemSolved}, #{project.techStack}, #{project.coverImage},
+            #{project.difficulty}, #{project.solution}, #{project.finishedAt})
+  </insert>
+
+  <update id="update">
+    UPDATE project SET
+      name = #{project.name},
+      description = #{project.description},
+      status = #{project.status},
+      progress = #{project.progress},
+      start_date = #{project.startDate},
+      target_date = #{project.targetDate},
+      github_url = #{project.githubUrl},
+      demo_url = #{project.demoUrl},
+      problem_solved = #{project.problemSolved},
+      tech_stack = #{project.techStack},
+      cover_image = #{project.coverImage},
+      difficulty = #{project.difficulty},
+      solution = #{project.solution},
+      finished_at = #{project.finishedAt},
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{project.id} AND user_id = #{userId}
+  </update>
+
+  <update id="updateProgress">
+    UPDATE project SET progress = #{progress}, updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{id} AND user_id = #{userId}
+  </update>
+
+  <delete id="delete">
+    DELETE FROM project WHERE id = #{id} AND user_id = #{userId}
+  </delete>
+
+  <select id="findLogs" resultType="com.myos.project.ProjectLog">
+    SELECT id, project_id, log_date, content, commit_ref
+    FROM project_log
+    WHERE user_id = #{userId} AND project_id = #{projectId}
+    ORDER BY log_date DESC, id DESC
+  </select>
+
+  <insert id="insertLog" useGeneratedKeys="true" keyProperty="log.id">
+    INSERT INTO project_log(user_id, project_id, log_date, content, commit_ref)
+    VALUES (#{userId}, #{log.projectId}, COALESCE(#{log.logDate}, CURRENT_DATE),
+            #{log.content}, #{log.commitRef})
+  </insert>
+</mapper>

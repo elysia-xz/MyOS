@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.myos.goal.GoalMapper">
+
+  <select id="findByUserId" resultType="com.myos.goal.Goal">
+    SELECT id, parent_id, title, description, category, level, system_code,
+           status, progress, target_value, start_date, end_date
+    FROM goal
+    WHERE user_id = #{userId}
+    ORDER BY
+      CASE level WHEN 'YEAR' THEN 1 WHEN 'MONTH' THEN 2 WHEN 'WEEK' THEN 3 ELSE 4 END,
+      id DESC
+  </select>
+
+  <select id="findByLevel" resultType="com.myos.goal.Goal">
+    SELECT id, parent_id, title, description, category, level, system_code,
+           status, progress, target_value, start_date, end_date
+    FROM goal
+    WHERE user_id = #{userId} AND level = #{level}
+    ORDER BY id DESC
+  </select>
+
+  <insert id="insert" useGeneratedKeys="true" keyProperty="g.id">
+    INSERT INTO goal(user_id, parent_id, title, description, category, level, system_code,
+                     status, progress, target_value, start_date, end_date)
+    VALUES (#{userId}, #{g.parentId}, #{g.title}, #{g.description}, #{g.category},
+            COALESCE(#{g.level}, 'MONTH'), #{g.systemCode},
+            COALESCE(#{g.status}, 'ACTIVE'), COALESCE(#{g.progress}, 0),
+            #{g.targetValue}, #{g.startDate}, #{g.endDate})
+  </insert>
+
+  <update id="updateProgress">
+    UPDATE goal SET progress = #{progress}, updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{id} AND user_id = #{userId}
+  </update>
+
+  <update id="updateStatus">
+    UPDATE goal SET status = #{status}, updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{id} AND user_id = #{userId}
+  </update>
+
+  <delete id="delete">
+    DELETE FROM goal WHERE id = #{id} AND user_id = #{userId}
+  </delete>
+</mapper>

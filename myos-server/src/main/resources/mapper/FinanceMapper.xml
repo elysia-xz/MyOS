@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.myos.finance.FinanceMapper">
+
+  <select id="findRecords" resultType="com.myos.finance.FinanceRecord">
+    SELECT id, record_date, record_type, category, amount, currency, note
+    FROM finance_record
+    WHERE user_id = #{userId}
+      AND record_date BETWEEN #{from} AND #{to}
+    ORDER BY record_date DESC, id DESC
+  </select>
+
+  <insert id="insertRecord">
+    INSERT INTO finance_record(user_id, record_date, record_type, category, amount, currency, note)
+    VALUES (#{userId}, #{r.recordDate}, #{r.recordType}, #{r.category},
+            #{r.amount}, COALESCE(#{r.currency}, 'CNY'), #{r.note})
+  </insert>
+
+  <delete id="deleteRecord">
+    DELETE FROM finance_record WHERE id = #{id} AND user_id = #{userId}
+  </delete>
+
+  <select id="sumByType" resultType="map">
+    SELECT record_type AS "recordType",
+           COALESCE(SUM(amount), 0) AS "total"
+    FROM finance_record
+    WHERE user_id = #{userId} AND record_date BETWEEN #{from} AND #{to}
+    GROUP BY record_type
+  </select>
+
+  <select id="sumByTypeValue" resultType="java.math.BigDecimal">
+    SELECT COALESCE(SUM(amount), 0)
+    FROM finance_record
+    WHERE user_id = #{userId} AND record_type = #{type}
+      AND record_date BETWEEN #{from} AND #{to}
+  </select>
+
+  <select id="sumByCategory" resultType="map">
+    SELECT COALESCE(category, '未分类') AS "category",
+           COALESCE(SUM(amount), 0) AS "total"
+    FROM finance_record
+    WHERE user_id = #{userId} AND record_type = #{type}
+      AND record_date BETWEEN #{from} AND #{to}
+    GROUP BY category
+    ORDER BY "total" DESC
+  </select>
+
+  <select id="monthlyTrend" resultType="map">
+    SELECT TO_CHAR(DATE_TRUNC('month', record_date), 'YYYY-MM') AS "month",
+           COALESCE(SUM(CASE WHEN record_type = 'INCOME'  THEN amount ELSE 0 END), 0) AS "income",
+           COALESCE(SUM(CASE WHEN record_type = 'EXPENSE' THEN amount ELSE 0 END), 0) AS "expense"
+    FROM finance_record
+    WHERE user_id = #{userId}
+      AND record_date >= DATE_TRUNC('month', CURRENT_DATE) - (#{months} - 1) * INTERVAL '1 month'
+    GROUP BY DATE_TRUNC('month', record_date)
+    ORDER BY DATE_TRUNC('month', record_date)
+  </select>
+
+  <select id="findSnapshots" resultType="com.myos.finance.AssetSnapshot">
+    SELECT id, snapshot_month, cash, cny_assets, usd_assets, other_assets, note
+    FROM asset_snapshot
+    WHERE user_id = #{userId}
+    ORDER BY snapshot_month DESC
+    LIMIT 12
+  </select>
+
+  <select id="findSnapshotByMonth" resultType="com.myos.finance.AssetSnapshot">
+    SELECT id, snapshot_month, cash, cny_assets, usd_assets, other_assets, note
+    FROM asset_snapshot
+    WHERE user_id = #{userId} AND snapshot_month = #{month}
+  </select>
+
+  <insert id="upsertSnapshot">
+    INSERT INTO asset_snapshot(user_id, snapshot_month, cash, cny_assets, usd_assets, other_assets, note)
+    VALUES (#{userId}, #{s.snapshotMonth},
+            COALESCE(#{s.cash}, 0), COALESCE(#{s.cnyAssets}, 0),
+            COALESCE(#{s.usdAssets}, 0), COALESCE(#{s.otherAssets}, 0), #{s.note})
+    ON CONFLICT (user_id, snapshot_month) DO UPDATE SET
+      cash         = EXCLUDED.cash,
+      cny_assets   = EXCLUDED.cny_assets,
+      usd_assets   = EXCLUDED.usd_assets,
+      other_assets = EXCLUDED.other_assets,
+      note         = EXCLUDED.note
+  </insert>
+</mapper>

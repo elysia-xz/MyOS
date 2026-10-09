@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:18.6
+    container_name: myos-postgres
+    environment:
+      POSTGRES_DB: myos
+      POSTGRES_USER: myos
+      POSTGRES_PASSWORD: myos123
+    ports:
+      - "5432:5432"
+    volumes:
+      - myos_pgdata:/var/lib/postgresql/data
+      # 执行顺序即文件名字典序：先建基础表 → 再打增量 → 最后灌演示数据
+      - ../myos-server/src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ../myos-server/src/main/resources/db/schema-v1.sql:/docker-entrypoint-initdb.d/02-schema-v1.sql:ro
+      - ../myos-server/src/main/resources/db/schema-v1.1.sql:/docker-entrypoint-initdb.d/03-schema-v1.1.sql:ro
+      - ../myos-server/src/main/resources/db/schema-v1.2.sql:/docker-entrypoint-initdb.d/04-schema-v1.2.sql:ro
+      - ../myos-server/src/main/resources/db/seed.sql:/docker-entrypoint-initdb.d/05-seed.sql:ro
+      - ../myos-server/src/main/resources/db/seed-v1.sql:/docker-entrypoint-initdb.d/06-seed-v1.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myos -d myos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build:
+      context: ../myos-server
+    container_name: myos-server
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: myos
+      DB_USER: myos
+      DB_PASSWORD: myos123
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../myos-web
+    container_name: myos-web
+    ports:
+      - "5173:80"
+    depends_on:
+      - server
+
+volumes:
+  myos_pgdata:

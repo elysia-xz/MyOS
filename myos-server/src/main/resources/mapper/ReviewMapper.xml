@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.myos.review.ReviewMapper">
+
+  <select id="findByType" resultType="com.myos.review.Review">
+    SELECT id, review_type, review_date, completed, good_things, bad_things,
+           wasted_time, unfinished, biggest_gain, next_focus, ai_summary, metrics_json,
+           period_start, period_end
+    FROM review
+    WHERE user_id = #{userId} AND review_type = #{type}
+    ORDER BY review_date DESC
+    LIMIT #{limit}
+  </select>
+
+  <select id="findByDate" resultType="com.myos.review.Review">
+    SELECT id, review_type, review_date, completed, good_things, bad_things,
+           wasted_time, unfinished, biggest_gain, next_focus, ai_summary, metrics_json,
+           period_start, period_end
+    FROM review
+    WHERE user_id = #{userId} AND review_type = #{type} AND review_date = #{date}
+  </select>
+
+  <insert id="upsert" useGeneratedKeys="true" keyProperty="r.id">
+    INSERT INTO review(user_id, review_type, review_date, completed, good_things, bad_things,
+                       wasted_time, unfinished, biggest_gain, next_focus, ai_summary, metrics_json,
+                       period_start, period_end)
+    VALUES (#{userId}, #{r.reviewType}, #{r.reviewDate}, COALESCE(#{r.completed}, FALSE),
+            #{r.goodThings}, #{r.badThings}, #{r.wastedTime}, #{r.unfinished},
+            #{r.biggestGain}, #{r.nextFocus}, #{r.aiSummary}, #{r.metricsJson},
+            #{r.periodStart}, #{r.periodEnd})
+    ON CONFLICT (user_id, review_type, review_date) DO UPDATE SET
+      completed    = EXCLUDED.completed,
+      good_things  = EXCLUDED.good_things,
+      bad_things   = EXCLUDED.bad_things,
+      wasted_time  = EXCLUDED.wasted_time,
+      unfinished   = EXCLUDED.unfinished,
+      biggest_gain = EXCLUDED.biggest_gain,
+      next_focus   = EXCLUDED.next_focus,
+      metrics_json = EXCLUDED.metrics_json,
+      period_start = EXCLUDED.period_start,
+      period_end   = EXCLUDED.period_end,
+      updated_at   = CURRENT_TIMESTAMP
+  </insert>
+
+  <update id="updateAiSummary">
+    UPDATE review SET ai_summary = #{summary}, updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{id} AND user_id = #{userId}
+  </update>
+
+  <select id="countByType" resultType="long">
+    SELECT COUNT(*) FROM review WHERE user_id = #{userId} AND review_type = #{type}
+  </select>
+</mapper>
