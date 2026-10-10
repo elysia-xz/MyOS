@@ -10,6 +10,9 @@
 
 const TODAY = new Date().toISOString().slice(0, 10)
 const MONTH = TODAY.slice(0, 7)
+/** 上两期的日期，用来演示「与上期对照」 */
+const YESTERDAY = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+const DAY_BEFORE = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10)
 
 const SYSTEMS = [
   { code: 'AI', name: 'AI 能力', unit: 'min', dailyTarget: 60 },
@@ -121,6 +124,12 @@ const contents = [
   }
 ]
 
+const tasks = [
+  { id: 1, title: '完成 MyOS V1.0 数据库与后端骨架', description: '新增 habit/finance/review/ai 模块', priority: 'HIGH', status: 'DONE', dueDate: TODAY },
+  { id: 2, title: '每天英语学习 60 分钟', priority: 'MEDIUM', status: 'TODO', dueDate: TODAY },
+  { id: 3, title: '输出一篇开发日志', priority: 'MEDIUM', status: 'TODO', dueDate: TODAY }
+]
+
 export const demoData: Record<string, any> = {
   '/dashboard': {
     today: TODAY, month: MONTH,
@@ -145,11 +154,7 @@ export const demoData: Record<string, any> = {
     metricValue: w.value, targetValue: w.target, done: w.done, note: null, recorded: w.recorded
   })),
 
-  '/tasks': [
-    { id: 1, title: '完成 MyOS V1.0 数据库与后端骨架', description: '新增 habit/finance/review/ai 模块', priority: 'HIGH', status: 'DONE', dueDate: TODAY },
-    { id: 2, title: '每天英语学习 60 分钟', priority: 'MEDIUM', status: 'TODO', dueDate: TODAY },
-    { id: 3, title: '输出一篇开发日志', priority: 'MEDIUM', status: 'TODO', dueDate: TODAY }
-  ],
+  '/tasks': tasks,
 
   '/learning': learning,
   '/contents': contents,
@@ -222,12 +227,22 @@ export const demoData: Record<string, any> = {
       unfinished: '趋势图还没做，卡在后端还没有聚合接口。',
       biggestGain: '把设计令牌统一后，改一处就能影响全局，比逐页调样式省事得多。',
       nextFocus: '先给后端补一个近 30 天的聚合接口，再把趋势折线图接上。',
-      metricsJson: '{"mood":4,"focus":3,"completion":75,"wasteSource":"社交媒体","taskType":"项目"}'
+      metricsJson: '{"mood":4,"focus":3,"completion":75,"wasteSource":"社交媒体","taskType":"项目","tags":["输出","专注"]}'
     }
   },
   '/review': [
-    { id: 1, reviewType: 'DAY', reviewDate: TODAY, goodThings: '完成了 V1 后端骨架', biggestGain: '领域分包确实更好维护' },
-    { id: 2, reviewType: 'DAY', reviewDate: TODAY, goodThings: '统一了设计令牌', biggestGain: '改一处影响全局' }
+    {
+      id: 1, reviewType: 'DAY', reviewDate: YESTERDAY,
+      goodThings: '完成了 V1 后端骨架', biggestGain: '领域分包确实更好维护',
+      nextFocus: '把复盘页的结构化自评补上。',
+      metricsJson: '{"mood":4,"focus":4,"completion":80,"wasteSource":"社交媒体","taskType":"项目","tags":["后端","专注"]}'
+    },
+    {
+      id: 2, reviewType: 'DAY', reviewDate: DAY_BEFORE,
+      goodThings: '统一了设计令牌', biggestGain: '改一处影响全局',
+      nextFocus: '补一个近 30 天的聚合接口。',
+      metricsJson: '{"mood":3,"focus":3,"completion":60,"wasteSource":"拖延","taskType":"输出","tags":["设计"]}'
+    }
   ],
 
   '/ai/status': { available: false }
@@ -245,6 +260,19 @@ export const demoData: Record<string, any> = {
 export function applyDemoWrite(url: string, method: string, body: any) {
   const [rawPath, query = ''] = (url || '').split('?')
   const path = rawPath.replace(/\/+$/, '')
+
+  // ---- 今日任务（复盘页「把复盘变成行动」会用到）----
+  if (path === '/tasks' && method === 'post') {
+    tasks.unshift({
+      id: Date.now(),
+      title: body?.title || '',
+      description: body?.description || null,
+      priority: body?.priority || 'MEDIUM',
+      status: 'TODO',
+      dueDate: body?.dueDate || TODAY
+    })
+    return
+  }
 
   // ---- 内容输出 ----
   if (path === '/contents' && method === 'post') {
