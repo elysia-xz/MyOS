@@ -16,4 +16,10 @@ public record Goal(
         Integer targetValue,
         LocalDate startDate,
         LocalDate endDate
-) {}
+) {
+    /** 插入后回填自增主键（record 不可变，只能新建一条） */
+    public Goal withId(Long id) {
+        return new Goal(id, parentId, title, description, category, level, systemCode,
+                status, progress, targetValue, startDate, endDate);
+    }
+}

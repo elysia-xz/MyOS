@@ -1,5 +1,8 @@
+-- 默认演示账号。口令 = admin123（README 写的就是这个）。
+-- 下面的哈希是用后端同版本（spring-security-crypto 7.1.1）生成并实测校验过的；
+-- 即使将来失效，AuthController 启动时也会自愈并打 WARN，不会静默卡在登录页。
 INSERT INTO my_user(id, username, password_hash, nickname)
-VALUES (1, 'admin', 'MVP-DEMO-password', 'Troy')
+VALUES (1, 'admin', '$2a$10$WsmKMsS37oIqM58MvbR33unEfuBXWoy8/AwDjq/jkRK6N9P.ZJexu', 'Troy')
 ON CONFLICT (id) DO NOTHING;
 
 SELECT setval(pg_get_serial_sequence('my_user','id'), COALESCE((SELECT MAX(id) FROM my_user), 1), true);

@@ -3,6 +3,8 @@ package com.myos.auth;
 import com.myos.common.ApiResponse;
 import com.myos.common.CurrentUser;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -25,6 +27,8 @@ import java.util.Map;
 @RequestMapping("/api/v1/auth")
 public class AuthController {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+
     private final JdbcTemplate jdbc;
     private final TokenService tokenService;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
@@ -35,19 +39,48 @@ public class AuthController {
         ensureDefaultUser();
     }
 
-    /** 若默认账号不存在则创建（密码 admin123，bcrypt 存储） */
+    /** 默认演示账号的口令。文档、README、种子数据都以它为准。 */
+    private static final String DEFAULT_USERNAME = "admin";
+    private static final String DEFAULT_PASSWORD = "admin123";
+
+    /**
+     * 确保默认演示账号存在，且口令确实等于 {@link #DEFAULT_PASSWORD}。
+     *
+     * 为什么不在 SQL 里写死 bcrypt 哈希：
+     *   bcrypt 哈希由「算法版本 + 随机盐」决定，写进种子脚本后一旦对不上，
+     *   现象是登录页永远提示「用户名或密码错误」——没有任何报错线索，
+     *   排查成本极高（这个坑已经真实踩过一次：种子里的哈希是占位符/示例值）。
+     *   所以把「默认账号口令 = admin123」这件事交给后端在启动时保证，
+     *   发现对不上就纠正并打 WARN，让它自愈而不是静默失效。
+     *
+     * 只在口令与默认值不符时才会改写；将来真加了改密接口，
+     * 这里需要改成「仅在哈希非法（非 bcrypt 格式）时纠正」。
+     */
     private void ensureDefaultUser() {
         try {
-            Integer cnt = jdbc.queryForObject(
-                    "select count(*) from my_user where username = 'admin'", Integer.class);
-            if (cnt != null && cnt == 0) {
+            var rows = jdbc.queryForList(
+                    "select id, password_hash from my_user where username = ?", DEFAULT_USERNAME);
+
+            if (rows.isEmpty()) {
                 jdbc.update("""
                         insert into my_user(username, email, password_hash, nickname)
-                        values ('admin', 'admin@myos.local', ?, 'Troy')
-                        """, encoder.encode("admin123"));
+                        values (?, 'admin@myos.local', ?, 'Troy')
+                        """, DEFAULT_USERNAME, encoder.encode(DEFAULT_PASSWORD));
+                log.info("已创建默认账号 {}（口令见 README）", DEFAULT_USERNAME);
+                return;
             }
-        } catch (Exception ignored) {
+
+            Object stored = rows.get(0).get("password_hash");
+            String hash = stored == null ? null : stored.toString();
+            if (hash == null || !encoder.matches(DEFAULT_PASSWORD, hash)) {
+                jdbc.update("update my_user set password_hash = ? where username = ?",
+                        encoder.encode(DEFAULT_PASSWORD), DEFAULT_USERNAME);
+                log.warn("默认账号 {} 的口令与文档不一致（种子里的哈希可能是占位符或示例值），已重置为文档值",
+                        DEFAULT_USERNAME);
+            }
+        } catch (Exception e) {
             // 表尚未初始化时不阻塞应用启动
+            log.debug("跳过默认账号检查：{}", e.getMessage());
         }
     }
 

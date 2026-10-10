@@ -10,11 +10,13 @@
     ORDER BY record_date DESC, id DESC
   </select>
 
-  <insert id="insertRecord">
+  <!-- 原来没写 useGeneratedKeys，导致新建后返回的 id 是 null；改用 RETURNING 取回 -->
+  <select id="insertRecord" resultType="long" flushCache="true">
     INSERT INTO finance_record(user_id, record_date, record_type, category, amount, currency, note)
     VALUES (#{userId}, #{r.recordDate}, #{r.recordType}, #{r.category},
             #{r.amount}, COALESCE(#{r.currency}, 'CNY'), #{r.note})
-  </insert>
+    RETURNING id
+  </select>
 
   <delete id="deleteRecord">
     DELETE FROM finance_record WHERE id = #{id} AND user_id = #{userId}
@@ -70,7 +72,7 @@
     WHERE user_id = #{userId} AND snapshot_month = #{month}
   </select>
 
-  <insert id="upsertSnapshot">
+  <select id="upsertSnapshot" resultType="long" flushCache="true">
     INSERT INTO asset_snapshot(user_id, snapshot_month, cash, cny_assets, usd_assets, other_assets, note)
     VALUES (#{userId}, #{s.snapshotMonth},
             COALESCE(#{s.cash}, 0), COALESCE(#{s.cnyAssets}, 0),
@@ -81,5 +83,6 @@
       usd_assets   = EXCLUDED.usd_assets,
       other_assets = EXCLUDED.other_assets,
       note         = EXCLUDED.note
-  </insert>
+    RETURNING id
+  </select>
 </mapper>

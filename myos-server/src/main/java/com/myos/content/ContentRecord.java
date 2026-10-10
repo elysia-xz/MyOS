@@ -13,4 +13,10 @@ public record ContentRecord(Long id, String title, String platform, String conte
                             // 本篇输出的一句话提炼（语录），可选
                             String quote,
                             String status,
-                            LocalDateTime publishedAt, Integer views, Integer likes) {}
+                            LocalDateTime publishedAt, Integer views, Integer likes) {
+
+    /** 插入后回填自增主键（record 不可变，只能新建一条） */
+    public ContentRecord withId(Long id) {
+        return new ContentRecord(id, title, platform, content, quote, status, publishedAt, views, likes);
+    }
+}

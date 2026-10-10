@@ -35,8 +35,8 @@ public class LearningController {
         LearningRecord record = new LearningRecord(null, req.title(), req.category(), req.systemCode(),
                 req.source(), req.content(), req.understanding(), req.practice(),
                 req.conclusion(), req.durationMinutes(), null);
-        mapper.insert(CurrentUser.id(), record);
-        return ApiResponse.ok(record);
+        long id = mapper.insert(CurrentUser.id(), record);
+        return ApiResponse.ok(record.withId(id));
     }
 
     @DeleteMapping("/{id}")

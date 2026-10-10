@@ -23,7 +23,8 @@
     WHERE id = #{id} AND user_id = #{userId}
   </select>
 
-  <insert id="insert" useGeneratedKeys="true" keyProperty="project.id">
+  <!-- 同 ContentMapper：Project 是 record（不可变），用 RETURNING 取主键 -->
+  <select id="insert" resultType="long" flushCache="true">
     INSERT INTO project(user_id, name, description, status, progress, start_date, target_date,
                         github_url, demo_url, problem_solved, tech_stack, cover_image,
                         difficulty, solution, finished_at)
@@ -32,7 +33,8 @@
             #{project.startDate}, #{project.targetDate}, #{project.githubUrl}, #{project.demoUrl},
             #{project.problemSolved}, #{project.techStack}, #{project.coverImage},
             #{project.difficulty}, #{project.solution}, #{project.finishedAt})
-  </insert>
+    RETURNING id
+  </select>
 
   <update id="update">
     UPDATE project SET
@@ -70,9 +72,10 @@
     ORDER BY log_date DESC, id DESC
   </select>
 
-  <insert id="insertLog" useGeneratedKeys="true" keyProperty="log.id">
+  <select id="insertLog" resultType="long" flushCache="true">
     INSERT INTO project_log(user_id, project_id, log_date, content, commit_ref)
     VALUES (#{userId}, #{log.projectId}, COALESCE(#{log.logDate}, CURRENT_DATE),
             #{log.content}, #{log.commitRef})
-  </insert>
+    RETURNING id
+  </select>
 </mapper>

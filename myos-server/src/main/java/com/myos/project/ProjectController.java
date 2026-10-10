@@ -73,8 +73,8 @@ public class ProjectController {
     @PostMapping
     public ApiResponse<?> create(@Valid @RequestBody SaveRequest req) {
         Project p = toProject(null, req);
-        mapper.insert(CurrentUser.id(), p);
-        return ApiResponse.ok(p);
+        long id = mapper.insert(CurrentUser.id(), p);
+        return ApiResponse.ok(p.withId(id));
     }
 
     @PutMapping("/{id}")
@@ -111,8 +111,8 @@ public class ProjectController {
         ProjectLog log = new ProjectLog(null, id,
                 req.logDate() == null ? LocalDate.now() : req.logDate(),
                 req.content(), req.commitRef());
-        mapper.insertLog(CurrentUser.id(), log);
-        return ApiResponse.ok(log);
+        long logId = mapper.insertLog(CurrentUser.id(), log);
+        return ApiResponse.ok(log.withId(logId));
     }
 
     private Project toProject(Long id, SaveRequest r) {

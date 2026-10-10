@@ -15,4 +15,10 @@ public record LearningRecord(
         String conclusion,
         Integer durationMinutes,
         LocalDateTime learnedAt
-) {}
+) {
+    /** 插入后回填自增主键（record 不可变，只能新建一条） */
+    public LearningRecord withId(Long id) {
+        return new LearningRecord(id, title, category, systemCode, source, content,
+                understanding, practice, conclusion, durationMinutes, learnedAt);
+    }
+}

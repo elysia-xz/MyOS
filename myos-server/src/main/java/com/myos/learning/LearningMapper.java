@@ -13,7 +13,8 @@ public interface LearningMapper {
     List<LearningRecord> findBySystem(@Param("userId") Long userId,
                                       @Param("systemCode") String systemCode);
 
-    int insert(@Param("userId") Long userId, @Param("record") LearningRecord record);
+    /** 插入并返回自增主键（SQL 用 RETURNING id） */
+    long insert(@Param("userId") Long userId, @Param("record") LearningRecord record);
 
     int delete(@Param("userId") Long userId, @Param("id") Long id);
 }

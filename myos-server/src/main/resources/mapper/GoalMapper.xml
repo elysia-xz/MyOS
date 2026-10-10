@@ -20,14 +20,16 @@
     ORDER BY id DESC
   </select>
 
-  <insert id="insert" useGeneratedKeys="true" keyProperty="g.id">
+  <!-- 同 ContentMapper：Goal 是 record（不可变），用 RETURNING 取主键 -->
+  <select id="insert" resultType="long" flushCache="true">
     INSERT INTO goal(user_id, parent_id, title, description, category, level, system_code,
                      status, progress, target_value, start_date, end_date)
     VALUES (#{userId}, #{g.parentId}, #{g.title}, #{g.description}, #{g.category},
             COALESCE(#{g.level}, 'MONTH'), #{g.systemCode},
             COALESCE(#{g.status}, 'ACTIVE'), COALESCE(#{g.progress}, 0),
             #{g.targetValue}, #{g.startDate}, #{g.endDate})
-  </insert>
+    RETURNING id
+  </select>
 
   <update id="updateProgress">
     UPDATE goal SET progress = #{progress}, updated_at = CURRENT_TIMESTAMP

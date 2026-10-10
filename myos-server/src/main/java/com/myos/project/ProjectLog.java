@@ -9,4 +9,9 @@ public record ProjectLog(
         LocalDate logDate,
         String content,
         String commitRef
-) {}
+) {
+    /** 插入后回填自增主键（record 不可变，只能新建一条） */
+    public ProjectLog withId(Long id) {
+        return new ProjectLog(id, projectId, logDate, content, commitRef);
+    }
+}

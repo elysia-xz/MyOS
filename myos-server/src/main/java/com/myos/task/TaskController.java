@@ -27,8 +27,8 @@ public class TaskController {
     public ApiResponse<?> create(@Valid @RequestBody CreateTaskRequest request) {
         Task task = new Task(null, request.goalId(), request.projectId(), request.title(), request.description(),
                 request.priority() == null ? "MEDIUM" : request.priority(), "TODO", request.dueDate(), null, null, null);
-        mapper.insert(CurrentUser.id(), task);
-        return ApiResponse.ok(task);
+        long id = mapper.insert(CurrentUser.id(), task);
+        return ApiResponse.ok(task.withId(id));
     }
 
     @PutMapping("/{id}/status")

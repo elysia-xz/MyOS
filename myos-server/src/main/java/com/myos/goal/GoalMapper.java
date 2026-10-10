@@ -12,7 +12,8 @@ public interface GoalMapper {
 
     List<Goal> findByLevel(@Param("userId") Long userId, @Param("level") String level);
 
-    int insert(@Param("userId") Long userId, @Param("g") Goal goal);
+    /** 插入并返回自增主键（SQL 用 RETURNING id） */
+    long insert(@Param("userId") Long userId, @Param("g") Goal goal);
 
     int updateProgress(@Param("userId") Long userId,
                        @Param("id") Long id,

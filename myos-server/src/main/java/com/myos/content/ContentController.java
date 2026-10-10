@@ -39,8 +39,8 @@ public class ContentController {
         ContentRecord record = new ContentRecord(null, req.title(), req.platform(), req.content(),
                 trimToNull(req.quote()),
                 req.status() == null ? "DRAFT" : req.status(), null, 0, 0);
-        mapper.insert(CurrentUser.id(), record);
-        return ApiResponse.ok(record);
+        long id = mapper.insert(CurrentUser.id(), record);
+        return ApiResponse.ok(record.withId(id));
     }
 
     @PutMapping("/{id}")

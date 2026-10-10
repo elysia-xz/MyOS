@@ -15,7 +15,8 @@ public interface FinanceMapper {
                                     @Param("from") LocalDate from,
                                     @Param("to") LocalDate to);
 
-    int insertRecord(@Param("userId") Long userId, @Param("r") FinanceRecord record);
+    /** 插入并返回自增主键（SQL 用 RETURNING id） */
+    long insertRecord(@Param("userId") Long userId, @Param("r") FinanceRecord record);
 
     int deleteRecord(@Param("userId") Long userId, @Param("id") Long id);
 
@@ -44,5 +45,6 @@ public interface FinanceMapper {
     AssetSnapshot findSnapshotByMonth(@Param("userId") Long userId,
                                       @Param("month") LocalDate month);
 
-    int upsertSnapshot(@Param("userId") Long userId, @Param("s") AssetSnapshot snapshot);
+    /** upsert 并返回该行主键（SQL 用 RETURNING id） */
+    long upsertSnapshot(@Param("userId") Long userId, @Param("s") AssetSnapshot snapshot);
 }

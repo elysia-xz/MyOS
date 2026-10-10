@@ -13,6 +13,11 @@ public record AssetSnapshot(
         BigDecimal otherAssets,
         String note
 ) {
+    /** upsert 后回填自增主键（record 不可变，只能新建一条） */
+    public AssetSnapshot withId(Long id) {
+        return new AssetSnapshot(id, snapshotMonth, cash, cnyAssets, usdAssets, otherAssets, note);
+    }
+
     public BigDecimal total() {
         return nz(cash).add(nz(cnyAssets)).add(nz(usdAssets)).add(nz(otherAssets));
     }

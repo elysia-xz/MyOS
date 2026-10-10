@@ -50,8 +50,8 @@ public class FinanceController {
                 req.recordDate() == null ? LocalDate.now() : req.recordDate(),
                 req.recordType(), req.category(), req.amount(),
                 req.currency() == null ? "CNY" : req.currency(), req.note());
-        mapper.insertRecord(CurrentUser.id(), r);
-        return ApiResponse.ok(r);
+        long id = mapper.insertRecord(CurrentUser.id(), r);
+        return ApiResponse.ok(r.withId(id));
     }
 
     @DeleteMapping("/records/{id}")
@@ -109,8 +109,8 @@ public class FinanceController {
                 ? YearMonth.now().atDay(1) : req.snapshotMonth();
         AssetSnapshot s = new AssetSnapshot(null, month,
                 nz(req.cash()), nz(req.cnyAssets()), nz(req.usdAssets()), nz(req.otherAssets()), req.note());
-        mapper.upsertSnapshot(CurrentUser.id(), s);
-        return ApiResponse.ok(s);
+        long id = mapper.upsertSnapshot(CurrentUser.id(), s);
+        return ApiResponse.ok(s.withId(id));
     }
 
     private static BigDecimal nz(BigDecimal v) {

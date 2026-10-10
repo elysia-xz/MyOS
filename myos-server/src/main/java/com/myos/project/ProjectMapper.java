@@ -12,7 +12,8 @@ public interface ProjectMapper {
 
     Project findById(@Param("userId") Long userId, @Param("id") Long id);
 
-    int insert(@Param("userId") Long userId, @Param("project") Project project);
+    /** 插入并返回自增主键（SQL 用 RETURNING id） */
+    long insert(@Param("userId") Long userId, @Param("project") Project project);
 
     int update(@Param("userId") Long userId, @Param("project") Project project);
 
@@ -24,5 +25,6 @@ public interface ProjectMapper {
 
     List<ProjectLog> findLogs(@Param("userId") Long userId, @Param("projectId") Long projectId);
 
-    int insertLog(@Param("userId") Long userId, @Param("log") ProjectLog log);
+    /** 插入并返回自增主键（SQL 用 RETURNING id） */
+    long insertLog(@Param("userId") Long userId, @Param("log") ProjectLog log);
 }

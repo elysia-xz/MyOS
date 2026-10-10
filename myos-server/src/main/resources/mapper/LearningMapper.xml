@@ -17,13 +17,15 @@
     ORDER BY learned_at DESC, id DESC
   </select>
 
-  <insert id="insert" useGeneratedKeys="true" keyProperty="record.id">
+  <!-- 同 ContentMapper：record 不可变，用 RETURNING 取主键 -->
+  <select id="insert" resultType="long" flushCache="true">
     INSERT INTO learning_record(user_id, title, category, system_code, source, content,
                                 understanding, practice, conclusion, duration_minutes, learned_at)
     VALUES (#{userId}, #{record.title}, #{record.category}, #{record.systemCode}, #{record.source},
             #{record.content}, #{record.understanding}, #{record.practice}, #{record.conclusion},
             #{record.durationMinutes}, COALESCE(#{record.learnedAt}, CURRENT_TIMESTAMP))
-  </insert>
+    RETURNING id
+  </select>
 
   <delete id="delete">
     DELETE FROM learning_record WHERE id = #{id} AND user_id = #{userId}

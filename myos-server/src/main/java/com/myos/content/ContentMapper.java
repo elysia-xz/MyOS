@@ -12,7 +12,8 @@ public interface ContentMapper {
 
     List<ContentRecord> findByUserId(@Param("userId") Long userId);
 
-    int insert(@Param("userId") Long userId, @Param("record") ContentRecord record);
+    /** 插入并返回自增主键（SQL 用 RETURNING id，见 ContentMapper.xml 注释） */
+    long insert(@Param("userId") Long userId, @Param("record") ContentRecord record);
 
     int update(@Param("userId") Long userId, @Param("id") Long id,
                @Param("title") String title, @Param("platform") String platform,

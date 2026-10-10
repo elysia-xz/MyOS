@@ -9,6 +9,7 @@ import java.util.List;
 @Mapper
 public interface TaskMapper {
     List<Task> findByUserId(@Param("userId") Long userId, @Param("date") LocalDate date);
-    int insert(@Param("userId") Long userId, @Param("task") Task task);
+    /** 插入并返回自增主键（SQL 用 RETURNING id） */
+    long insert(@Param("userId") Long userId, @Param("task") Task task);
     int updateStatus(@Param("userId") Long userId, @Param("id") Long id, @Param("status") String status);
 }

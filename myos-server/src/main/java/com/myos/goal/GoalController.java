@@ -64,8 +64,8 @@ public class GoalController {
         Goal g = new Goal(null, req.parentId(), req.title(), req.description(), req.category(),
                 req.level(), req.systemCode(), "ACTIVE", 0, req.targetValue(),
                 req.startDate(), req.endDate());
-        mapper.insert(CurrentUser.id(), g);
-        return ApiResponse.ok(g);
+        long id = mapper.insert(CurrentUser.id(), g);
+        return ApiResponse.ok(g.withId(id));
     }
 
     @PutMapping("/{id}/progress")

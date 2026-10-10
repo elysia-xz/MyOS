@@ -21,4 +21,11 @@ public record Project(
         String difficulty,
         String solution,
         LocalDate finishedAt
-) {}
+) {
+    /** 插入后回填自增主键（record 不可变，只能新建一条） */
+    public Project withId(Long id) {
+        return new Project(id, name, description, status, progress, startDate, targetDate,
+                githubUrl, demoUrl, problemSolved, techStack, coverImage,
+                difficulty, solution, finishedAt);
+    }
+}

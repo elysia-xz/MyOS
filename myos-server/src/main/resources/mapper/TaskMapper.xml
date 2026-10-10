@@ -12,11 +12,13 @@
       id DESC
   </select>
 
-  <insert id="insert">
+  <!-- 原来没写 useGeneratedKeys，导致新建后返回的 id 是 null；改用 RETURNING 取回 -->
+  <select id="insert" resultType="long" flushCache="true">
     INSERT INTO task(user_id, goal_id, project_id, title, description, priority, status, due_date)
     VALUES (#{userId}, #{task.goalId}, #{task.projectId}, #{task.title}, #{task.description},
             #{task.priority}, COALESCE(#{task.status}, 'TODO'), #{task.dueDate})
-  </insert>
+    RETURNING id
+  </select>
 
   <update id="updateStatus">
     UPDATE task

@@ -5,15 +5,22 @@
 -- ============================================================
 
 -- ------------------------------------------------------------
--- 用户：确保密码哈希存在（bcrypt of "admin123"）
--- 若 V0.1 已插入 id=1 的 admin，这里更新其密码为 bcrypt 值
+-- 用户：确保默认账号口令是 admin123（bcrypt 存储）
+--
+-- 修复记录：这里原先写的是一个占位符哈希，实测既不是 admin123 也不是
+-- 任何已知口令的 bcrypt 值 —— 连上真库后登录必然失败，且没有任何报错线索。
+-- 现在换成用后端同版本库生成并校验过的哈希。
+--
+-- 条件说明：仅当库里的值不是合法 bcrypt（不以 $2a$ 开头）时才覆盖，
+-- 所以脚本可重复执行，也不会覆盖将来用户自己改过的密码。
 -- ------------------------------------------------------------
 INSERT INTO my_user(id, username, email, password_hash, nickname)
 VALUES (1, 'admin', 'admin@myos.local',
-        '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'Troy')
+        '$2a$10$WsmKMsS37oIqM58MvbR33unEfuBXWoy8/AwDjq/jkRK6N9P.ZJexu', 'Troy')
 ON CONFLICT (id) DO UPDATE
   SET password_hash = EXCLUDED.password_hash
-  WHERE my_user.password_hash = 'MVP-DEMO-password';
+  WHERE my_user.password_hash IS DISTINCT FROM EXCLUDED.password_hash
+    AND my_user.password_hash NOT LIKE '$2a$%';
 
 SELECT setval(pg_get_serial_sequence('my_user','id'), COALESCE((SELECT MAX(id) FROM my_user), 1), true);
 
@@ -35,6 +42,22 @@ AND NOT EXISTS (SELECT 1 FROM goal WHERE user_id = 1 AND title = '完成私人�
 -- ------------------------------------------------------------
 -- 项目
 -- ------------------------------------------------------------
+-- V0.1 的 seed.sql 已经插过一个占位项目 'MyOS'，它其实就是这里的「MyOS 私人工作台」，
+-- 只是 V0.1 还没起正式名字。先把它升级成 V1 的名字与描述，
+-- 否则两个脚本各插一条，首页「本月项目」会出现两条几乎同名的项目。
+UPDATE project
+   SET name        = 'MyOS 私人工作台',
+       description = '个人成长操作系统 V1.0'
+ WHERE user_id = 1 AND name = 'MyOS'
+   AND NOT EXISTS (SELECT 1 FROM project p WHERE p.user_id = 1 AND p.name = 'MyOS 私人工作台');
+
+-- 旧库可能已经同时存在两条（此时上面的 UPDATE 会因已存在同名项目而跳过）→
+-- 删掉 V0.1 的占位那条。它下面的任务由 task.project_id 的 ON DELETE SET NULL 保留
+-- （见 schema-v1.3.sql），开发日志则随项目级联删除。
+DELETE FROM project
+ WHERE user_id = 1 AND name = 'MyOS'
+   AND EXISTS (SELECT 1 FROM project p WHERE p.user_id = 1 AND p.name = 'MyOS 私人工作台');
+
 INSERT INTO project(user_id, name, description, status, progress, start_date, target_date,
                     problem_solved, tech_stack, github_url, difficulty, solution)
 SELECT 1, 'MyOS 私人工作台', '个人成长操作系统 V1.0', 'IN_PROGRESS', 70, CURRENT_DATE, CURRENT_DATE + 30,

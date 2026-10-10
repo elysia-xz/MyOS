@@ -19,4 +19,11 @@ public record Review(
         String metricsJson,
         LocalDate periodStart,
         LocalDate periodEnd
-) {}
+) {
+    /** upsert 后回填自增主键（record 不可变，只能新建一条） */
+    public Review withId(Long id) {
+        return new Review(id, reviewType, reviewDate, completed, goodThings, badThings,
+                wastedTime, unfinished, biggestGain, nextFocus, aiSummary, metricsJson,
+                periodStart, periodEnd);
+    }
+}

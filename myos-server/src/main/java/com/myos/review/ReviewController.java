@@ -62,8 +62,8 @@ public class ReviewController {
                 req.goodThings(), req.badThings(), req.wastedTime(), req.unfinished(),
                 req.biggestGain(), req.nextFocus(), req.aiSummary(), req.metricsJson(),
                 periodStart(t, anchor), periodEnd(t, anchor));
-        mapper.upsert(CurrentUser.id(), r);
-        return ApiResponse.ok(r);
+        long id = mapper.upsert(CurrentUser.id(), r);
+        return ApiResponse.ok(r.withId(id));
     }
 
     /** 各周期的锚点日期（统一用周期起始日，保证唯一性） */

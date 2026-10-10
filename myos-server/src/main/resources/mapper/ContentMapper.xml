@@ -9,12 +9,20 @@
     ORDER BY created_at DESC, id DESC
   </select>
 
-  <insert id="insert" useGeneratedKeys="true" keyProperty="record.id">
+  <!--
+    用 PostgreSQL 的 RETURNING 取回自增主键。
+    这里不能用 useGeneratedKeys：ContentRecord 是 Java record（不可变），
+    MyBatis 无法把生成的主键回写到参数对象，会抛
+    "Error getting generated key or setting result to parameter object"。
+    改成 select 直接返回 id，由调用方组装带 id 的返回体。
+  -->
+  <select id="insert" resultType="long" flushCache="true">
     INSERT INTO content_record(user_id, title, platform, content, quote, status, published_at)
     VALUES (#{userId}, #{record.title}, #{record.platform}, #{record.content}, #{record.quote},
             COALESCE(#{record.status}, 'DRAFT'),
             CASE WHEN #{record.status} = 'PUBLISHED' THEN CURRENT_TIMESTAMP ELSE NULL END)
-  </insert>
+    RETURNING id
+  </select>
 
   <update id="update">
     UPDATE content_record SET title = #{title}, platform = #{platform}, content = #{content},

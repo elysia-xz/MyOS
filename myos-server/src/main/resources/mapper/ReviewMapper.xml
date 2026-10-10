@@ -20,7 +20,12 @@
     WHERE user_id = #{userId} AND review_type = #{type} AND review_date = #{date}
   </select>
 
-  <insert id="upsert" useGeneratedKeys="true" keyProperty="r.id">
+  <!--
+    同 ContentMapper：Review 是 record（不可变），useGeneratedKeys 会抛异常。
+    注意 RETURNING 在 ON CONFLICT DO UPDATE 时返回的是"已存在那一行"的 id，
+    这正是我们要的语义（upsert 后那条记录的 id）。
+  -->
+  <select id="upsert" resultType="long" flushCache="true">
     INSERT INTO review(user_id, review_type, review_date, completed, good_things, bad_things,
                        wasted_time, unfinished, biggest_gain, next_focus, ai_summary, metrics_json,
                        period_start, period_end)
@@ -40,7 +45,8 @@
       period_start = EXCLUDED.period_start,
       period_end   = EXCLUDED.period_end,
       updated_at   = CURRENT_TIMESTAMP
-  </insert>
+    RETURNING id
+  </select>
 
   <update id="updateAiSummary">
     UPDATE review SET ai_summary = #{summary}, updated_at = CURRENT_TIMESTAMP
