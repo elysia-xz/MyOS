@@ -12,4 +12,5 @@ public interface TaskMapper {
     /** 插入并返回自增主键（SQL 用 RETURNING id） */
     long insert(@Param("userId") Long userId, @Param("task") Task task);
     int updateStatus(@Param("userId") Long userId, @Param("id") Long id, @Param("status") String status);
+    int deleteById(@Param("userId") Long userId, @Param("id") Long id);
 }

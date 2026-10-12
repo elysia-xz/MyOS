@@ -26,9 +26,130 @@ const data = ref<any>({
   todayTasks: { total: 0, done: 0 }
 })
 const loading = ref(true)
-const aiAvailable = ref(false)
 const demoMode = ref(false)
 const showAiHelp = ref(false)
+
+// AI 生成结果由本组件持有，不能放在 AiActionPanel 内部：
+// AI 生成完会触发刷新，而刷新会让首页切到 loading 态、卸载整个内容区，
+// 子组件里的结果会随之被销毁，界面看起来就是「生成成功但什么都不显示」。
+const aiResult = ref('')
+
+/* ---------------- AI 网关配置：配置界面在前端，Key 存在后端 ----------------
+   为什么 Key 不下发到前端：它不是「设置项」而是「凭据」——前端要记住它只能塞进
+   浏览器本地存储，本机任何人都能读出来，网络面板里也会明文出现，泄露即不可逆
+   （直接挂账单）。所以这里只负责「填」，存和读都归后端管，
+   GET 回来的永远只有 sk-123****cdef 这种脱敏形态。
+
+   三个输入框一律「留空 = 不改动」，当前生效值只出现在 placeholder 与状态区。
+   ⚠️ 早期版本把生效值预填进输入框，结果粘贴新值时没覆盖 → 拼成两段 URL
+   （https://api.deepseek.comhttps://…），调用必然失败且极难一眼看出来。
+   预填本身就是个陷阱，所以改成与 Key 一致的空框语义。 */
+const aiForm = ref({ baseUrl: '', model: '', apiKey: '' })
+const aiCurrent = ref({
+  baseUrl: '', model: '', masked: '', source: 'NONE', stored: false, available: false
+})
+const aiAvailable = computed(() => aiCurrent.value.available)
+const aiSaving = ref(false)
+const aiTesting = ref(false)
+const aiTestMsg = ref('')
+const aiTestOk = ref(false)
+
+/** 后端返回的配置状态统一从这里落到界面，避免各处零散赋值走样 */
+function applyAiStatus(d: any) {
+  aiCurrent.value = {
+    baseUrl: d?.baseUrl || '',
+    model: d?.model || '',
+    masked: d?.masked || '',
+    source: d?.source || 'NONE',
+    stored: !!d?.stored,
+    available: !!d?.available
+  }
+}
+
+async function openAiConfig() {
+  showAiHelp.value = true
+  aiTestMsg.value = ''
+  // 每次从空表单开始 —— 想改哪项就填哪项，不填的保持原样
+  aiForm.value = { baseUrl: '', model: '', apiKey: '' }
+  try {
+    const res: any = await api.aiConfig()
+    applyAiStatus(res.data.data)
+  } catch {
+    // 后端版本较旧没有该接口时保持空表单，用户仍可填写并提交
+  }
+}
+
+async function saveAiConfig() {
+  if (aiSaving.value) return
+  const baseUrl = aiForm.value.baseUrl.trim()
+  const model = aiForm.value.model.trim()
+  const key = aiForm.value.apiKey.trim()
+  if (!baseUrl && !model && !key) {
+    toast('三项都没填，没有需要保存的内容')
+    return
+  }
+  if (!key && !aiCurrent.value.masked) {
+    toast('先填入 API Key')
+    return
+  }
+  aiSaving.value = true
+  aiTestMsg.value = ''
+  try {
+    const res: any = await api.saveAiConfig({ baseUrl, model, apiKey: key })
+    applyAiStatus(res.data.data)
+    aiForm.value = { baseUrl: '', model: '', apiKey: '' }
+    toast('已保存，Key 只存在后端', 'ok')
+    runAiTest()
+  } catch (e: any) {
+    toast(e?.response?.data?.message || '保存失败')
+  } finally {
+    aiSaving.value = false
+  }
+}
+
+/** 真发一次最小请求。光看「已配置」不够——Key 填错、模型名写错都要当场暴露 */
+async function runAiTest() {
+  if (aiTesting.value) return
+  if (runtime.demoMode) {
+    aiTestOk.value = false
+    aiTestMsg.value = '当前是演示模式，后端未连接，无法真正测试'
+    return
+  }
+  aiTesting.value = true
+  aiTestMsg.value = ''
+  try {
+    const res: any = await api.testAiConfig()
+    const body = res.data || {}
+    aiTestOk.value = !!body.success
+    aiTestMsg.value = body.success
+      ? `连接正常，AI 助手已可用${body.data?.reply ? `（模型回复：${body.data.reply}）` : ''}`
+      : body.message || '连接失败'
+  } catch (e: any) {
+    aiTestOk.value = false
+    aiTestMsg.value = e?.response?.data?.message || '连接失败'
+  } finally {
+    aiTesting.value = false
+  }
+}
+
+/** 整体清空，退回环境变量 / 内置默认值。
+    只清 Key 是不够的：库的优先级高于环境变量，base-url 留在库里会静默盖掉
+    部署时注入的 MYOS_AI_BASE_URL，而表单里又没法把字段改回空。 */
+async function resetAiConfig() {
+  if (aiSaving.value) return
+  aiSaving.value = true
+  aiTestMsg.value = ''
+  try {
+    const res: any = await api.saveAiConfig({ reset: true })
+    applyAiStatus(res.data.data)
+    aiForm.value = { baseUrl: '', model: '', apiKey: '' }
+    toast('已清空配置，回到默认值')
+  } catch (e: any) {
+    toast(e?.response?.data?.message || '清空失败')
+  } finally {
+    aiSaving.value = false
+  }
+}
 
 const dateText = computed(() => {
   const d = new Date()
@@ -115,7 +236,7 @@ const flowClosed = computed(() => coreDone.value === CORE_FLOW)
 function goStep(to: string) {
   if (to === '#ai') {
     if (!aiAvailable.value) {
-      showAiHelp.value = true
+      openAiConfig()
     } else {
       toast('AI 网关已就绪，可在下方「AI 行动」面板生成内容', 'ok')
     }
@@ -133,12 +254,18 @@ function fmtDate(s: any) {
   return String(s).slice(5, 10)
 }
 
-async function load() {
-  loading.value = true
+/**
+ * silent = true 时不进入 loading 态。
+ * AI 生成完的刷新必须走静默：否则内容区会被卸载重建，
+ * 用户看到页面闪一下，AI 正文也跟着消失。
+ */
+async function load(silent = false) {
+  if (!silent) loading.value = true
   try {
     const [dash, ai] = await Promise.all([api.dashboard(), api.aiStatus()])
     data.value = dash.data.data
-    aiAvailable.value = !!ai.data.data?.available
+    // /ai/status 只回一个 available，其余字段等打开配置弹窗时再拉
+    aiCurrent.value = { ...aiCurrent.value, available: !!ai.data.data?.available }
   } catch (e) {
     // 保持空状态，页面已做兜底
   } finally {
@@ -150,7 +277,7 @@ async function load() {
 /** AI 生成完成后刷新数据并给出反馈 */
 function onAiRefresh() {
   toast('AI 已生成内容', 'ok')
-  load()
+  load(true)
 }
 
 onMounted(load)
@@ -164,7 +291,9 @@ onMounted(load)
         <h1>{{ headline }}</h1>
         <p>{{ subline }}</p>
       </div>
-      <button class="ghost" @click="load">刷新</button>
+      <!-- 必须写成 load()：直接写 load 会把点击事件当成 silent 参数传进去，
+           手动点刷新就再也看不到加载态了 -->
+      <button class="ghost" @click="load()">刷新</button>
     </div>
 
     <div v-if="loading" class="card loading">正在加载成长数据…</div>
@@ -218,8 +347,10 @@ onMounted(load)
 
         <AiActionPanel
           :available="aiAvailable"
+          :result="aiResult"
+          @result="aiResult = $event"
           @refresh="onAiRefresh"
-          @configure="showAiHelp = true"
+          @configure="openAiConfig"
         />
       </div>
 
@@ -351,24 +482,66 @@ onMounted(load)
       </div>
     </template>
 
-    <!-- AI 配置引导 -->
+    <!-- AI 网关配置：填写界面在前端，Key 存在后端，读回永远只有脱敏值 -->
     <div v-if="showAiHelp" class="modal-mask" @click.self="showAiHelp = false">
-      <div class="modal">
+      <div class="modal modal-narrow">
         <h2>配置 AI 网关</h2>
         <p class="sub">AI 是贯穿层，不做独立聊天页。配置后首页的 4 个场景入口即可用。</p>
+
         <div class="form-card">
           <label class="field">
-            <span>1. 在后端设置环境变量</span>
-            <textarea readonly rows="3">MYOS_AI_API_KEY=sk-xxxx
-MYOS_AI_BASE_URL=https://api.deepseek.com
-MYOS_AI_MODEL=deepseek-chat</textarea>
+            <span>API Key<em class="ai-hint">只往上传，页面永不回显</em></span>
+            <input
+              v-model="aiForm.apiKey"
+              type="password"
+              autocomplete="off"
+              :placeholder="aiCurrent.masked ? `已保存 ${aiCurrent.masked}，留空表示不改动` : 'sk-...'"
+            />
           </label>
-          <label class="field">
-            <span>2. 重启后端即可。Key 只存后端，不会下发到前端。</span>
-          </label>
+
+          <div class="ai-row">
+            <label class="field">
+              <span>Base URL<em class="ai-hint">留空 = 不改动</em></span>
+              <input
+                v-model="aiForm.baseUrl"
+                type="text"
+                :placeholder="aiCurrent.baseUrl || 'https://api.deepseek.com'"
+              />
+            </label>
+            <label class="field">
+              <span>模型<em class="ai-hint">留空 = 不改动</em></span>
+              <input v-model="aiForm.model" type="text" :placeholder="aiCurrent.model || 'deepseek-chat'" />
+            </label>
+          </div>
+
+          <div class="ai-state">
+            <div class="ai-state-line">
+              <span>当前状态</span>
+              <b :class="aiAvailable ? 'ok' : 'warn'">{{ aiAvailable ? '已就绪' : '未配置' }}</b>
+              <em v-if="aiCurrent.source === 'ENV'">来自环境变量</em>
+              <em v-else-if="aiCurrent.source === 'DB'">来自此处保存</em>
+            </div>
+            <div class="ai-state-line">
+              <span>生效地址</span>
+              <code>{{ aiCurrent.baseUrl || '默认' }}</code>
+            </div>
+            <div class="ai-state-line">
+              <span>生效模型</span>
+              <code>{{ aiCurrent.model || '默认' }}</code>
+            </div>
+          </div>
+
+          <p v-if="aiTestMsg" class="ai-test" :class="aiTestOk ? 'ok' : 'bad'">{{ aiTestMsg }}</p>
         </div>
+
         <div class="modal-actions">
-          <button class="ghost" @click="showAiHelp = false">知道了</button>
+          <button v-if="aiCurrent.stored" class="ghost" :disabled="aiSaving" @click="resetAiConfig">清空配置</button>
+          <button class="ghost" :disabled="aiSaving || aiTesting" @click="runAiTest">
+            {{ aiTesting ? '测试中…' : '测试连接' }}
+          </button>
+          <button class="primary" :disabled="aiSaving" @click="saveAiConfig">
+            {{ aiSaving ? '保存中…' : '保存' }}
+          </button>
         </div>
       </div>
     </div>

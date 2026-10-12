@@ -66,6 +66,20 @@ public class ReviewController {
         return ApiResponse.ok(r.withId(id));
     }
 
+    /**
+     * 删除某个周期的复盘。
+     * 原先没有这个接口，于是「写错了想删掉」只能去改数据库，
+     * 冒烟测试也只能把测试内容留在用户的复盘历史里。
+     */
+    @DeleteMapping
+    public ApiResponse<?> remove(@RequestParam(defaultValue = "DAY") String type,
+                                 @RequestParam(required = false) LocalDate date) {
+        String t = type.toUpperCase();
+        LocalDate anchor = date == null ? anchorDate(t) : date;
+        int affected = mapper.deleteByDate(CurrentUser.id(), t, anchor);
+        return affected >= 1 ? ApiResponse.ok(true) : ApiResponse.fail("该周期还没有复盘");
+    }
+
     /** 各周期的锚点日期（统一用周期起始日，保证唯一性） */
     private LocalDate anchorDate(String type) {
         LocalDate today = LocalDate.now();

@@ -173,6 +173,10 @@ if task_ok:
     status, env, text = call("PUT", "/tasks/%s/status" % tid, token=TOKEN,
                              raw_query="?status=DONE")
     check("PUT /tasks/{id}/status（流转）", status == 200 and ok_envelope(env), text[:160])
+    # 建了就必须能删。原先没有 DELETE /tasks/{id}，于是每次冒烟都在库里
+    # 留下一条 [smoke-xxx] 任务，还会被 AI 日报当成真实数据读进去。
+    status, env, text = call("DELETE", "/tasks/%s" % tid, token=TOKEN)
+    check("DELETE /tasks/{id}（清理）", status == 200 and ok_envelope(env), text[:160])
 
 
 # ----------------------------------------------------------------------
@@ -188,7 +192,12 @@ status, env, text = call("POST", "/learning", {
     "understanding": "字段齐全", "practice": "写一条真数据",
     "conclusion": "SQL 可执行", "durationMinutes": 10,
 }, token=TOKEN)
-check("POST /learning（五段式写入）", status == 200 and ok_envelope(env), text[:160])
+learn_ok = status == 200 and ok_envelope(env)
+check("POST /learning（五段式写入）", learn_ok, text[:160])
+if learn_ok:
+    lid = env["data"]["id"]
+    status, env, text = call("DELETE", "/learning/%s" % lid, token=TOKEN)
+    check("DELETE /learning/{id}（清理）", status == 200 and ok_envelope(env), text[:160])
 
 
 # ----------------------------------------------------------------------
@@ -331,6 +340,8 @@ check("GET /review?type=DAY", status == 200 and ok_envelope(env), text[:120])
 
 status, env, text = call("GET", "/review/current", token=TOKEN, raw_query="?type=DAY")
 check("GET /review/current?type=DAY", status == 200 and ok_envelope(env), text[:160])
+# 先把今天原有的复盘备份下来，跑完还原 —— 否则冒烟测试会把用户当天写的复盘冲掉
+review_backup = (env.get("data") or {}).get("existing") if ok_envelope(env) else None
 
 status, env, text = call("PUT", "/review", {
     "reviewType": "DAY", "reviewDate": TODAY, "completed": True,
@@ -347,6 +358,20 @@ status, env, text = call("GET", "/review/current", token=TOKEN, raw_query="?type
 saved_metrics = (env.get("data") or {}).get("existing", {}).get("metricsJson") if ok_envelope(env) else None
 check("metricsJson 正确回存（证明 ON CONFLICT 真的 UPDATE 了）",
       bool(saved_metrics) and "mood" in str(saved_metrics), "实际 %r" % saved_metrics)
+
+# 还原现场：原本有就写回去，原本没有就删掉
+if review_backup:
+    restore = {k: review_backup.get(k) for k in (
+        "goodThings", "badThings", "wastedTime", "unfinished",
+        "biggestGain", "nextFocus", "metricsJson")}
+    restore["reviewType"] = "DAY"
+    restore["reviewDate"] = TODAY
+    status, env, text = call("PUT", "/review", restore, token=TOKEN)
+    check("还原原有复盘（不留测试内容）", status == 200 and ok_envelope(env), text[:160])
+else:
+    status, env, text = call("DELETE", "/review", token=TOKEN,
+                             raw_query="?type=DAY&date=" + TODAY)
+    check("DELETE /review（清理）", status == 200 and ok_envelope(env), text[:160])
 
 
 # ----------------------------------------------------------------------

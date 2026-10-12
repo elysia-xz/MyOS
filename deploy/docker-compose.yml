@@ -16,8 +16,9 @@ services:
       - ../myos-server/src/main/resources/db/schema-v1.1.sql:/docker-entrypoint-initdb.d/03-schema-v1.1.sql:ro
       - ../myos-server/src/main/resources/db/schema-v1.2.sql:/docker-entrypoint-initdb.d/04-schema-v1.2.sql:ro
       - ../myos-server/src/main/resources/db/schema-v1.3.sql:/docker-entrypoint-initdb.d/05-schema-v1.3.sql:ro
-      - ../myos-server/src/main/resources/db/seed.sql:/docker-entrypoint-initdb.d/06-seed.sql:ro
-      - ../myos-server/src/main/resources/db/seed-v1.sql:/docker-entrypoint-initdb.d/07-seed-v1.sql:ro
+      - ../myos-server/src/main/resources/db/schema-v1.4.sql:/docker-entrypoint-initdb.d/06-schema-v1.4.sql:ro
+      - ../myos-server/src/main/resources/db/seed.sql:/docker-entrypoint-initdb.d/07-seed.sql:ro
+      - ../myos-server/src/main/resources/db/seed-v1.sql:/docker-entrypoint-initdb.d/08-seed-v1.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U myos -d myos"]
       interval: 5s

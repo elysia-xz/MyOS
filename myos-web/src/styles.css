@@ -170,6 +170,9 @@ nav { margin-top: 28px; display: grid; gap: 3px; }
 .ai-out { margin-top: 16px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 12px; padding: 16px; }
 .ai-out pre { margin: 0; white-space: pre-wrap; font-family: inherit; font-size: 13px; line-height: 1.75; color: #e6e9eb; }
 .ai-out .off { opacity: .6; font-size: 12.5px; }
+/* 复制正文：AI 输出面板是深色底，按钮必须用亮色文字才看得见 */
+.ai-copy { margin-top: 12px; border: 1px solid rgba(255,255,255,.24); background: rgba(255,255,255,.08); color: #e6e9eb; border-radius: 8px; min-height: 30px; padding: 0 12px; font-size: 12.5px; transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
+.ai-copy:hover { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.4); }
 
 /* AI 未启用：深色面板里的醒目提醒 + 行动入口 */
 .ai-off { background: rgba(255, 176, 32, .1); border: 1px solid rgba(255, 176, 32, .45); border-radius: 10px; padding: 14px 16px; }
@@ -369,6 +372,24 @@ label.field > .field-head small { font-weight: 400; font-size: 11.5px; color: va
 .modal h2 { margin: 0 0 4px; font-size: 20px; letter-spacing: -.6px; }
 .modal .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; }
+/* 表单类弹窗不需要 720px 那么宽，过宽会让输入框显得空 */
+.modal-narrow { width: min(520px, 100%); }
+
+/* ---- AI 网关配置表单 ---- */
+.ai-hint { font-style: normal; color: var(--faint); margin-left: 6px; }
+.ai-row { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+.ai-state { display: grid; gap: 5px; margin-top: 2px; padding-top: 12px; border-top: 1px solid var(--line2); font-size: 12.5px; color: var(--muted); }
+.ai-state-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.ai-state-line > span { flex: 0 0 60px; color: var(--faint); }
+.ai-state-line b { font-weight: 700; }
+.ai-state-line b.ok { color: var(--ok); }
+.ai-state-line b.warn { color: var(--warn); }
+.ai-state-line em { font-style: normal; color: var(--faint); }
+/* 生效地址可能很长（如自建代理），必须允许在任意位置断行，否则会撑破弹窗 */
+.ai-state-line code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; color: var(--ink); background: #F4F5F7; border-radius: 5px; padding: 1px 6px; overflow-wrap: anywhere; }
+.ai-test { margin: 0; font-size: 12.5px; line-height: 1.6; padding: 9px 12px; border-radius: 10px; }
+.ai-test.ok { background: var(--ok-bg); border: 1px solid var(--ok-bright); color: var(--ok); }
+.ai-test.bad { background: var(--warn-bg); border: 1px solid var(--warn-bright); color: var(--warn); }
 
 .loading { padding: 34px; text-align: center; color: var(--faint); font-size: 13.5px; }
 .section-gap { margin-top: 16px; }

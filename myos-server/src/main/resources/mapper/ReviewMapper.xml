@@ -53,6 +53,11 @@
     WHERE id = #{id} AND user_id = #{userId}
   </update>
 
+  <delete id="deleteByDate">
+    DELETE FROM review
+    WHERE user_id = #{userId} AND review_type = #{type} AND review_date = #{date}
+  </delete>
+
   <select id="countByType" resultType="long">
     SELECT COUNT(*) FROM review WHERE user_id = #{userId} AND review_type = #{type}
   </select>

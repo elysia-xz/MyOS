@@ -130,6 +130,28 @@ const tasks = [
   { id: 3, title: '输出一篇开发日志', priority: 'MEDIUM', status: 'TODO', dueDate: TODAY }
 ]
 
+/** AI 网关配置：演示模式下由 applyDemoWrite 就地改写，所以必须提升到模块作用域 */
+const aiConfig = {
+  configured: false,
+  available: false,
+  source: 'NONE',
+  baseUrl: 'https://api.deepseek.com',
+  model: 'deepseek-chat',
+  masked: '',
+  stored: false,
+  updatedAt: null as string | null
+}
+
+/** 与 aiConfig 同步，否则演示模式下配好 Key、刷新一次又变回「未启用」 */
+const aiStatus = { available: false }
+
+/** 与后端 AiConfigService.mask() 保持同一口径，演示数据才不会被识破 */
+function maskKey(key: string): string {
+  const k = key.trim()
+  if (k.length <= 10) return '****'
+  return k.slice(0, 6) + '****' + k.slice(-4)
+}
+
 export const demoData: Record<string, any> = {
   '/dashboard': {
     today: TODAY, month: MONTH,
@@ -245,7 +267,8 @@ export const demoData: Record<string, any> = {
     }
   ],
 
-  '/ai/status': { available: false }
+  '/ai/status': aiStatus,
+  '/ai/config': aiConfig
 }
 
 /**
@@ -271,6 +294,33 @@ export function applyDemoWrite(url: string, method: string, body: any) {
       status: 'TODO',
       dueDate: body?.dueDate || TODAY
     })
+    return
+  }
+
+  // ---- AI 网关配置（首页「配置 AI 网关」表单）----
+  if (path === '/ai/config' && method === 'post') {
+    if (body?.reset) {
+      // 与后端一致：整体清空，退回默认值
+      aiConfig.configured = false
+      aiConfig.available = false
+      aiConfig.source = 'NONE'
+      aiConfig.masked = ''
+      aiConfig.baseUrl = 'https://api.deepseek.com'
+      aiConfig.model = 'deepseek-chat'
+      aiConfig.stored = false
+    } else {
+      if (body?.baseUrl) aiConfig.baseUrl = body.baseUrl
+      if (body?.model) aiConfig.model = body.model
+      if (body?.apiKey) {
+        aiConfig.configured = true
+        aiConfig.available = true
+        aiConfig.source = 'DB'
+        aiConfig.masked = maskKey(String(body.apiKey))
+      }
+      aiConfig.stored = true
+    }
+    aiStatus.available = aiConfig.available
+    aiConfig.updatedAt = new Date().toISOString()
     return
   }
 

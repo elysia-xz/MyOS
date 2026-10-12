@@ -37,6 +37,13 @@ public class TaskController {
         return affected == 1 ? ApiResponse.ok(true) : ApiResponse.fail("任务不存在");
     }
 
+    /** 删除任务。原先没有这个接口 —— 建错了的任务在界面上根本删不掉。 */
+    @DeleteMapping("/{id}")
+    public ApiResponse<?> remove(@PathVariable Long id) {
+        int affected = mapper.deleteById(CurrentUser.id(), id);
+        return affected == 1 ? ApiResponse.ok(true) : ApiResponse.fail("任务不存在");
+    }
+
 
     public record CreateTaskRequest(Long goalId, Long projectId, @NotBlank String title, String description,
                                     String priority, LocalDate dueDate) {}

@@ -17,6 +17,7 @@ export const api = {
   createTask: (data: any) => http.post('/tasks', data),
   updateTaskStatus: (id: number, status: string) =>
     http.put(`/tasks/${id}/status`, null, { params: { status } }),
+  deleteTask: (id: number) => http.delete(`/tasks/${id}`),
 
   // ---- 今日习惯打点（7 系统水位）----
   systems: () => http.get('/habit/systems'),
@@ -73,9 +74,17 @@ export const api = {
   reviews: (type: string, limit = 10) => http.get('/review', { params: { type, limit } }),
   currentReview: (type: string) => http.get('/review/current', { params: { type } }),
   saveReview: (data: any) => http.put('/review', data),
+  deleteReview: (type: string, date?: string) =>
+    http.delete('/review', { params: { type, ...(date ? { date } : {}) } }),
 
   // ---- AI 助手（场景化，无独立聊天页）----
   aiStatus: () => http.get('/ai/status'),
+  // 网关配置：配置界面在前端，Key 存在后端。GET 只回脱敏值（sk-123****cdef），
+  // 完整 Key 只往上传、不下来。reset=true 表示整体清空（退回环境变量/默认值）。
+  aiConfig: () => http.get('/ai/config'),
+  saveAiConfig: (data: { baseUrl?: string; model?: string; apiKey?: string; reset?: boolean }) =>
+    http.post('/ai/config', data),
+  testAiConfig: () => http.post('/ai/config/test'),
   aiDailySummary: () => http.post('/ai/daily/summary'),
   aiDailyReport: () => http.post('/ai/daily/report'),
   aiDailyReview: () => http.post('/ai/daily/review'),

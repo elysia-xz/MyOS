@@ -22,10 +22,12 @@ public class AiController {
 
     private final AiGateway gateway;
     private final JdbcTemplate jdbc;
+    private final AiConfigService config;
 
-    public AiController(AiGateway gateway, JdbcTemplate jdbc) {
+    public AiController(AiGateway gateway, JdbcTemplate jdbc, AiConfigService config) {
         this.gateway = gateway;
         this.jdbc = jdbc;
+        this.config = config;
     }
 
     /** 网关状态：前端据此决定是否显示 AI 入口 */
@@ -34,9 +36,93 @@ public class AiController {
         return ApiResponse.ok(Map.of("available", gateway.available()));
     }
 
+    // ---------------- 网关配置：配置界面在前端，Key 存在后端 ----------------
+    //
+    // 设计取舍：Key 不放在前端。它不是「设置项」而是「凭据」——前端要记住它只能塞进
+    // localStorage，本机任何人都能读出来，浏览器网络面板里也会明文出现，泄露即不可逆
+    // （直接挂账单）。所以拆成两半：填写界面在前端，存储在后端，读回永远只有 masked。
+
+    /** 配置状态。**只回脱敏值**，完整的 Key 既不进日志也不出现在响应里。 */
+    @GetMapping("/config")
+    public ApiResponse<?> configStatus() {
+        return ApiResponse.ok(config.status());
+    }
+
+    /**
+     * 写入配置。三个字段留空均表示「不改动」，
+     * 这样单独改模型名不会把已保存的 Key 抹掉；要整体清空请用 reset。
+     */
+    @PostMapping("/config")
+    public ApiResponse<?> saveConfig(@RequestBody ConfigRequest req) {
+        String baseUrl = trim(req.baseUrl());
+        if (!baseUrl.isEmpty() && !baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+            return ApiResponse.fail("Base URL 需要以 http:// 或 https:// 开头");
+        }
+        // 防呆：粘贴时没覆盖原有内容会拼成两段地址（前端实测踩过，
+        // 得到 https://api.deepseek.comhttps://… ）。这种地址必然调不通，
+        // 与其让用户对着「网络异常」猜半天，不如在这里直接拦下并说清原因。
+        if (countOf(baseUrl.toLowerCase(), "http") > 1) {
+            return ApiResponse.fail("Base URL 里出现了两段地址，像是粘贴时没有覆盖原有内容，请重新填写");
+        }
+        config.save(baseUrl, trim(req.model()), trim(req.apiKey()), Boolean.TRUE.equals(req.reset()));
+        return ApiResponse.ok(config.status());
+    }
+
+    /**
+     * 连通性测试：真发一次最小请求。
+     * 光看「已配置」是不够的——Key 填错、模型名写错、Base URL 不对，都要当场暴露出来。
+     */
+    @PostMapping("/config/test")
+    public ApiResponse<?> testConfig() {
+        try {
+            String reply = gateway.complete("config_test", "只回复两个字：可用");
+            String brief = reply == null ? "" : reply.strip();
+            if (brief.length() > 60) brief = brief.substring(0, 60) + "…";
+            return ApiResponse.ok(Map.of("reachable", true, "reply", brief));
+        } catch (AiUnavailableException e) {
+            return ApiResponse.fail(e.getMessage());
+        }
+    }
+
+    /** 配置请求体。注意 apiKey 只进不出，响应里换成 configStatus() 的 masked。 */
+    public record ConfigRequest(String baseUrl, String model, String apiKey, Boolean reset) {}
+
+    private static String trim(String s) {
+        return s == null ? "" : s.trim();
+    }
+
+    private static int countOf(String haystack, String needle) {
+        int n = 0;
+        int i = 0;
+        while ((i = haystack.indexOf(needle, i)) >= 0) {
+            n++;
+            i += needle.length();
+        }
+        return n;
+    }
+
+    /**
+     * 「和 AI 讨论」。
+     *
+     * 注意：这里原先直接把数据快照当提示词发出去，**没有任何指令** ——
+     * 实测模型会自行发挥（生成了一整段 SQL 脚本），完全不是「讨论」。
+     * 所以补上明确的角色与输出要求。
+     */
     @PostMapping("/daily/summary")
     public ApiResponse<?> summaryToday() {
-        return run("daily_summary", snapshotToday(CurrentUser.id()));
+        String prompt = """
+                你是我的个人成长助理。以下是我今天的真实数据，请像朋友一样跟我聊两句。
+
+                要求：
+                1. 先用一句话概括今天的状态，再点出 2 个值得注意的地方（好的和不足的都要说）
+                2. 最后问我一个能让我想下去的问题
+                3. 直接说话，不要写标题、不要分点编号、不要给 SQL 或代码
+                4. 只用数据里出现的事实，不要编造
+                5. 200 字以内
+
+                【今日数据】
+                """ + snapshotToday(CurrentUser.id());
+        return run("daily_summary", prompt);
     }
 
     @PostMapping("/daily/report")

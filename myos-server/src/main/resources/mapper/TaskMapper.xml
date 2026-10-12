@@ -27,4 +27,9 @@
         updated_at = CURRENT_TIMESTAMP
     WHERE id = #{id} AND user_id = #{userId}
   </update>
+
+  <!-- 带 user_id 条件，避免越权删到别人的任务 -->
+  <delete id="deleteById">
+    DELETE FROM task WHERE id = #{id} AND user_id = #{userId}
+  </delete>
 </mapper>

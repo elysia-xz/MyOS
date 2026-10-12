@@ -24,5 +24,10 @@ public interface ReviewMapper {
                         @Param("id") Long id,
                         @Param("summary") String summary);
 
+    /** 删除某个周期的那篇复盘（唯一键是 user_id + review_type + review_date） */
+    int deleteByDate(@Param("userId") Long userId,
+                     @Param("type") String type,
+                     @Param("date") LocalDate date);
+
     long countByType(@Param("userId") Long userId, @Param("type") String type);
 }
