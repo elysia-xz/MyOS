@@ -2,6 +2,7 @@ package com.myos.ai;
 
 import com.myos.common.ApiResponse;
 import com.myos.common.CurrentUser;
+import com.myos.task.TaskSql;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
@@ -193,17 +194,22 @@ public class AiController {
 
     // ---------------- 数据快照拼装 ----------------
 
+    /**
+     * 任务口径必须与「今日」页一致，否则 AI 汇报的完成率和界面对不上。
+     * 原来这里单独抄了一份 old 口径（只认 due_date = 今天），
+     * 逾期未完成的任务被漏掉，AI 就一直汇报「任务完成 0/0」。
+     * 口径见 {@link TaskSql#SCOPE_TODAY}。
+     */
     private String snapshotToday(Long uid) {
         LocalDate today = LocalDate.now();
         StringBuilder sb = new StringBuilder();
         sb.append("日期：").append(today).append('\n');
 
+        String base = "select count(*) from task where user_id=? and " + TaskSql.SCOPE_TODAY;
         Integer doneTasks = jdbc.queryForObject(
-                "select count(*) from task where user_id=? and status='DONE' and (due_date=? or due_date is null)",
-                Integer.class, uid, today);
+                base + " and status='DONE'", Integer.class, uid, today, today);
         Integer totalTasks = jdbc.queryForObject(
-                "select count(*) from task where user_id=? and (due_date=? or due_date is null)",
-                Integer.class, uid, today);
+                base, Integer.class, uid, today, today);
         sb.append("任务：完成 ").append(doneTasks).append('/').append(totalTasks).append('\n');
 
         sb.append("习惯打点：\n");

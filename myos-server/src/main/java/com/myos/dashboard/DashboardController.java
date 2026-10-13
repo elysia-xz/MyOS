@@ -6,6 +6,7 @@ import com.myos.common.LevelRule;
 import com.myos.common.SystemCatalog;
 import com.myos.habit.HabitLog;
 import com.myos.habit.HabitMapper;
+import com.myos.task.TaskSql;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -189,13 +190,15 @@ public class DashboardController {
 
     // ---------------- 今日任务（首页一并返回） ----------------
 
+    /**
+     * 口径取自 {@link TaskSql#SCOPE_TODAY}（今天到期 + 逾期未完成）。
+     * 不要在这里另写一份条件 —— 三处各抄一遍正是上次静默失配的原因。
+     */
     private Map<String, Object> todayTasks(Long uid, LocalDate today) {
-        Integer total = jdbc.queryForObject(
-                "select count(*) from task where user_id=? and (due_date=? or due_date is null)",
-                Integer.class, uid, today);
+        String base = "select count(*) from task where user_id=? and " + TaskSql.SCOPE_TODAY;
+        Integer total = jdbc.queryForObject(base, Integer.class, uid, today, today);
         Integer done = jdbc.queryForObject(
-                "select count(*) from task where user_id=? and (due_date=? or due_date is null) and status='DONE'",
-                Integer.class, uid, today);
+                base + " and status='DONE'", Integer.class, uid, today, today);
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("total", total == null ? 0 : total);
         m.put("done", done == null ? 0 : done);

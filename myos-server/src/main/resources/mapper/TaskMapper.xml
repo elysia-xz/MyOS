@@ -1,13 +1,30 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.myos.task.TaskMapper">
+  <!--
+    「今日任务」的口径：今天到期 或 逾期未完成。
+
+    原来只写 due_date = #{date}，导致逾期没做完的任务一到次日就从列表里
+    彻底消失（周一没干完，周二查不到）。必须允许逾期未完成事项延续到今天，
+    但已完成的历史任务不能天天重复刷屏，所以加 status <> 'DONE' 门控。
+
+    ⚠️ 这条条件在 DashboardController 和 AiController 里也各有一份，
+        Java 侧统一引用 com.myos.task.TaskSql#SCOPE_TODAY_MYBATIS；
+       XML 里无法引用 Java 常量，改这里时必须同步那边，反之亦然。
+       （这次事故就是因为三处各抄一遍、只改了一处。）
+
+    排序把逾期项提到最前：逾期的事比今天新安排的事更紧急。
+  -->
   <select id="findByUserId" resultType="com.myos.task.Task">
     SELECT id, goal_id, project_id, title, description, priority, status, due_date,
            completed_at, created_at, updated_at
     FROM task
     WHERE user_id = #{userId}
-      AND (due_date = #{date} OR due_date IS NULL)
+      AND (due_date = #{date}
+           OR due_date IS NULL
+           OR (due_date &lt; #{date} AND status &lt;&gt; 'DONE'))
     ORDER BY
+      CASE WHEN due_date &lt; #{date} AND status &lt;&gt; 'DONE' THEN 0 ELSE 1 END,
       CASE priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END,
       id DESC
   </select>

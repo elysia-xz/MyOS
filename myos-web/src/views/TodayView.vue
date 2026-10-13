@@ -14,6 +14,24 @@ const saving = ref(false)
 const today = new Date().toISOString().slice(0, 10)
 const doneCount = computed(() => habits.value.filter((h) => h.done || h.percent >= 100).length)
 
+/**
+ * 逾期未完成。
+ *
+ * 后端「今日任务」的口径是「今天到期 + 逾期未完成」，所以逾期任务会延续到
+ * 这个列表里（否则周一没干完，周二就彻底看不到了）。但这带来一个必须处理的
+ * 展示问题：逾期任务和今天到期的新任务如果长得一模一样，用户根本分不清
+ * 哪个是欠了很久的 —— 修复就只做了一半。所以这里显式标出逾期天数。
+ */
+function isOverdue(task: any) {
+  return task.status !== 'DONE' && !!task.dueDate && task.dueDate < today
+}
+
+function overdueDays(task: any) {
+  if (!isOverdue(task)) return 0
+  const ms = Date.now() - new Date(task.dueDate + 'T00:00:00').getTime()
+  return Math.max(1, Math.round(ms / 86400000))
+}
+
 async function load() {
   const [t, h] = await Promise.all([api.tasks(), api.habits()])
   tasks.value = t.data.data
@@ -131,16 +149,47 @@ onMounted(load)
           <button class="primary small" style="flex: 0 0 auto" @click="add">添加</button>
         </div>
         <div v-if="!tasks.length" class="empty">今天还没有任务。</div>
-        <div v-for="task in tasks" :key="task.id" class="list-row">
+        <div v-for="task in tasks" :key="task.id" class="list-row" :class="{ overdue: isOverdue(task) }">
           <button class="circle" :class="{ done: task.status === 'DONE' }" @click="toggle(task)">
             {{ task.status === 'DONE' ? '✓' : '' }}
           </button>
           <div class="row-main">
             <strong :class="{ strike: task.status === 'DONE' }">{{ task.title }}</strong>
-            <small>{{ task.priority }} · {{ task.dueDate || '无截止日期' }}</small>
+            <small :class="{ 'due-late': isOverdue(task) }">
+              {{ task.priority }} · {{ task.dueDate || '无截止日期' }} <span v-if="isOverdue(task)" class="overdue-tag">逾期 {{ overdueDays(task) }} 天</span>
+            </small>
           </div>
         </div>
       </div>
     </div>
   </section>
 </template>
+
+<style scoped>
+/*
+ * 逾期任务的视觉标识。
+ * 用左侧色条 + 徽标两级信号：隔很远扫一眼能看出「上面这一批是欠账」，
+ * 凑近看才知道具体欠了几天。只上警示色，不动字号和布局，避免和正常任务抢注意力。
+ */
+.list-row.overdue {
+  /* inset 阴影做色条，不占布局、也不影响 :first-of-type 的 border-top 规则 */
+  box-shadow: inset 3px 0 0 var(--warn-bright);
+}
+
+/* 深档 --warn 做文字色；亮档 --warn-bright 只用于上面的填充色条 */
+.row-main small.due-late {
+  color: var(--warn);
+}
+
+.overdue-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 10.5px;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+</style>

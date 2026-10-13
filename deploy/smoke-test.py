@@ -162,6 +162,49 @@ section("[3] 今日任务")
 status, env, text = call("GET", "/tasks", token=TOKEN, raw_query="?date=" + TODAY)
 check("GET /tasks?date=today", status == 200 and ok_envelope(env), text[:120])
 
+# ----------------------------------------------------------------------
+# 回归：逾期未完成的任务必须仍出现在「今日」列表里。
+#
+# 曾经的口径是 due_date = 今天，导致逾期没做完的任务一到次日就彻底查不到 ——
+# 周一没干完，周二从「今日」页消失；首页完成率也照旧只算今天；
+# AI 读快照时同样漏掉，于是一直汇报「任务完成 0/0」。
+# 这条 SQL 当时在三处各抄了一份，只改一处会静默失配，所以必须留回归。
+# ----------------------------------------------------------------------
+OVERDUE = (date.today() - timedelta(days=3)).isoformat()
+status, env, text = call("POST", "/tasks", {
+    "title": TAG + " 逾期任务", "description": "回归测试，跑完会删",
+    "priority": "HIGH", "dueDate": OVERDUE,
+}, token=TOKEN)
+overdue_ok = status == 200 and ok_envelope(env)
+check("POST /tasks（逾期任务，回归用）", overdue_ok, text[:160])
+if overdue_ok:
+    oid = env["data"]["id"]
+    # 再建一条「今天到期」的作对照，否则列表里没有可比对象，排序检查等于空跑
+    status2, env2, text2 = call("POST", "/tasks", {
+        "title": TAG + " 今日到期任务", "description": "排序对照，跑完会删",
+        "priority": "LOW", "dueDate": TODAY,
+    }, token=TOKEN)
+    cid = env2["data"]["id"] if status2 == 200 and ok_envelope(env2) else None
+
+    status, env, text = call("GET", "/tasks", token=TOKEN, raw_query="?date=" + TODAY)
+    rows = env.get("data") or []
+    hit = [t for t in rows if t["id"] == oid]
+    check("逾期未完成的任务仍出现在今日列表", len(hit) == 1,
+          "建了 1 条 3 天前截止的任务，今日列表 %d 条" % len(rows))
+    if hit and cid is not None:
+        pos_overdue = rows.index(hit[0])
+        pos_today = [i for i, t in enumerate(rows) if t["id"] == cid]
+        check("逾期任务排在今天到期项之前",
+              pos_today and pos_overdue < pos_today[0],
+              "逾期项第 %d 位，今日到期项第 %s 位"
+              % (pos_overdue, pos_today[0] if pos_today else "-"))
+    if cid is not None:
+        status, env, text = call("DELETE", "/tasks/%s" % cid, token=TOKEN)
+        check("DELETE /tasks/{id}（对照任务清理）", status == 200 and ok_envelope(env), text[:160])
+
+    status, env, text = call("DELETE", "/tasks/%s" % oid, token=TOKEN)
+    check("DELETE /tasks/{id}（逾期任务清理）", status == 200 and ok_envelope(env), text[:160])
+
 status, env, text = call("POST", "/tasks", {
     "title": TAG + " 冒烟任务", "description": "端到端验证用，跑完会删",
     "priority": "LOW", "dueDate": TODAY,
