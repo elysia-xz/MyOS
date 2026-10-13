@@ -5,8 +5,18 @@ import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
 const auth = useAuthStore()
-const username = ref('admin')
-const password = ref('admin123')
+
+/**
+ * 账号密码一律留空，不要在这里预填默认值。
+ *
+ * 曾经写成 ref('admin') / ref('admin123')，页面底部还挂着「默认账号
+ * admin / admin123」的提示 —— 本机开发时图省事，但项目一旦从局域网
+ * 甚至公网被访问，同网段任何人打开页面就是**一键登录**，提示行等于
+ * 把钥匙挂在门上。默认账号只应存在于后端种子数据与自愈逻辑里，
+ * 前端不展示、不预填。
+ */
+const username = ref('')
+const password = ref('')
 const error = ref('')
 
 async function submit() {
@@ -43,7 +53,6 @@ function enterDemo() {
       <button class="ghost" style="width: 100%; margin-top: 10px" @click="enterDemo">
         跳过登录，预览界面（演示数据）
       </button>
-      <div class="tip">默认账号 admin / admin123</div>
     </div>
   </div>
 </template>

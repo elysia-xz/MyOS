@@ -44,7 +44,7 @@ public class AuthController {
     private static final String DEFAULT_PASSWORD = "admin123";
 
     /**
-     * 确保默认演示账号存在，且口令确实等于 {@link #DEFAULT_PASSWORD}。
+     * 确保默认演示账号存在，且口令哈希是**合法的 bcrypt**。
      *
      * 为什么不在 SQL 里写死 bcrypt 哈希：
      *   bcrypt 哈希由「算法版本 + 随机盐」决定，写进种子脚本后一旦对不上，
@@ -53,8 +53,11 @@ public class AuthController {
      *   所以把「默认账号口令 = admin123」这件事交给后端在启动时保证，
      *   发现对不上就纠正并打 WARN，让它自愈而不是静默失效。
      *
-     * 只在口令与默认值不符时才会改写；将来真加了改密接口，
-     * 这里需要改成「仅在哈希非法（非 bcrypt 格式）时纠正」。
+     * ⚠️ 纠正的条件是「哈希非法」，不是「哈希不等于 admin123」。
+     *    曾经写成 matches(DEFAULT_PASSWORD, hash) 不成立就重置 —— 那样用户
+     *    一旦把密码改成强密码，下次重启就会被悄悄改回 admin123，
+     *    既推翻用户的改动又毫无提示。合法的 bcrypt 哈希一律尊重，
+     *    只有非 bcrypt 格式（种子里的占位符、明文、空值）才覆盖。
      */
     private void ensureDefaultUser() {
         try {
@@ -72,16 +75,23 @@ public class AuthController {
 
             Object stored = rows.get(0).get("password_hash");
             String hash = stored == null ? null : stored.toString();
-            if (hash == null || !encoder.matches(DEFAULT_PASSWORD, hash)) {
+            if (!isBcryptHash(hash)) {
+                String before = hash == null ? "(空)" : hash.length() > 24 ? hash.substring(0, 24) + "…" : hash;
                 jdbc.update("update my_user set password_hash = ? where username = ?",
                         encoder.encode(DEFAULT_PASSWORD), DEFAULT_USERNAME);
-                log.warn("默认账号 {} 的口令与文档不一致（种子里的哈希可能是占位符或示例值），已重置为文档值",
-                        DEFAULT_USERNAME);
+                log.warn("默认账号 {} 的口令哈希不是合法 bcrypt（原值 {}），已重置为文档值。"
+                        + "若这是你自己改过的密码被误判，请检查 isBcryptHash 的判定",
+                        DEFAULT_USERNAME, before);
             }
         } catch (Exception e) {
             // 表尚未初始化时不阻塞应用启动
             log.debug("跳过默认账号检查：{}", e.getMessage());
         }
+    }
+
+    /** 合法 bcrypt 哈希的形态：$2a$ / $2b$ / $2y$ 开头，后跟 cost 与 53 位 salt+digest。 */
+    private static boolean isBcryptHash(String hash) {
+        return hash != null && hash.matches("^\\$2[aby]\\$\\d{2}\\$.{53}$");
     }
 
     /**
