@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { api } from '../api'
 import { runtime } from '../api/http'
 import { useToast } from '../composables/useToast'
+import { useAiChat } from '../composables/useAiChat'
 import { PROJECT_STAGES as STAGES, withStage } from '../utils/projectStage'
 import SystemWaterBars from '../components/SystemWaterBars.vue'
 import LevelCards from '../components/LevelCards.vue'
@@ -33,6 +34,13 @@ const showAiHelp = ref(false)
 // AI 生成完会触发刷新，而刷新会让首页切到 loading 态、卸载整个内容区，
 // 子组件里的结果会随之被销毁，界面看起来就是「生成成功但什么都不显示」。
 const aiResult = ref('')
+
+/* ---------------- AI 对话（问答 + 带确认的办事）----------------
+   同理，对话状态也必须放在这里而不是面板里：用户点「刷新」会让内容区
+   卸载重建，存在面板内的对话会整段消失。这里由首页持有，
+   写入成功后走 load(true) 静默刷新 —— 不能走非静默刷新，
+   那会让内容区闪一下，对话也跟着消失。 */
+const chat = useAiChat(() => load(true))
 
 /* ---------------- AI 网关配置：配置界面在前端，Key 存在后端 ----------------
    为什么 Key 不下发到前端：它不是「设置项」而是「凭据」——前端要记住它只能塞进
@@ -348,9 +356,23 @@ onMounted(load)
         <AiActionPanel
           :available="aiAvailable"
           :result="aiResult"
+          :conv-id="chat.convId.value"
+          :msgs="chat.msgs.value"
+          :pending="chat.pending.value"
+          :chat-busy="chat.busy.value"
+          :chat-err="chat.err.value"
+          :conversations="chat.conversations.value"
+          :history-open="chat.historyOpen.value"
+          :loading-history="chat.loadingHistory.value"
           @result="aiResult = $event"
           @refresh="onAiRefresh"
           @configure="openAiConfig"
+          @send="chat.send($event)"
+          @confirm="chat.confirm($event)"
+          @cancel="chat.cancel($event)"
+          @new-chat="chat.startNew()"
+          @toggle-history="chat.openHistory()"
+          @open-conversation="chat.openConversation($event)"
         />
       </div>
 

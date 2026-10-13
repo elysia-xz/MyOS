@@ -89,5 +89,18 @@ export const api = {
   aiDailyReport: () => http.post('/ai/daily/report'),
   aiDailyReview: () => http.post('/ai/daily/review'),
   aiMonthlySummary: () => http.post('/ai/monthly/summary'),
-  aiAnnualReport: () => http.post('/ai/annual/report')
+  aiAnnualReport: () => http.post('/ai/annual/report'),
+
+  // ---- AI 对话（二期：能问答，也能带确认地办事）----
+  // conversationId 为空表示新开一轮对话；返回 status = DONE（直接显示）
+  // 或 PENDING（带 toolCalls，要用户确认后才执行）。
+  aiChat: (data: { conversationId?: number | null; message: string }) =>
+    http.post('/ai/chat', data),
+  // 只传要确认的调用 id。工具名和参数由后端回读，前端给的其它信息不算数。
+  aiToolExecute: (data: { conversationId: number; calls: { id: string }[] }) =>
+    http.post('/ai/tool/execute', data),
+  aiToolCancel: (data: { conversationId: number; calls: { id: string }[] }) =>
+    http.post('/ai/tool/cancel', data),
+  aiConversations: () => http.get('/ai/conversations'),
+  aiConversation: (id: number) => http.get(`/ai/conversations/${id}`)
 }

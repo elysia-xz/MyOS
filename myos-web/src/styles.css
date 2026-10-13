@@ -181,6 +181,64 @@ nav { margin-top: 28px; display: grid; gap: 3px; }
 .ai-configure { border: 0; background: var(--warn-bright); color: #4A3200; font-weight: 600; font-size: 12.5px; border-radius: 8px; min-height: 32px; padding: 0 14px; transition: background .15s ease; }
 .ai-configure:hover { background: #FFC24D; }
 
+/* ---- AI 对话（问答 + 带确认的办事）----
+   整块在深色面板内，所以颜色全部走 rgba(255,255,255,x) 派生，
+   不引入新的亮色底 —— 亮底会把「AI 面板是深色卡」的视觉对比打碎。 */
+.chat-block { margin-top: 16px; border-top: 1px solid rgba(255,255,255,.12); padding-top: 14px; }
+.chat-head { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; opacity: .75; margin-bottom: 10px; }
+.chat-head-ops { display: flex; gap: 8px; }
+.chat-op { border: 1px solid rgba(255,255,255,.2); background: transparent; color: rgba(255,255,255,.75); border-radius: 7px; padding: 3px 9px; font-size: 11.5px; transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.chat-op:hover:not(:disabled) { background: rgba(255,255,255,.12); color: #fff; }
+.chat-op:disabled { opacity: .45; }
+
+.chat-log { max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+.chat-row { display: flex; }
+.chat-row.user { justify-content: flex-end; }
+.chat-bubble { max-width: 86%; padding: 9px 12px; border-radius: 12px; font-size: 12.8px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; position: relative; }
+.chat-bubble.user { background: var(--primary); color: #fff; border-bottom-right-radius: 4px; }
+.chat-bubble.assistant { background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.13); color: #e6e9eb; border-bottom-left-radius: 4px; }
+.chat-time { display: block; font-size: 10.5px; opacity: .5; margin-bottom: 2px; }
+.chat-tool { font-size: 11.5px; line-height: 1.6; color: rgba(255,255,255,.55); background: rgba(255,255,255,.04); border-left: 2px solid rgba(255,255,255,.2); padding: 5px 10px; border-radius: 0 8px 8px 0; white-space: pre-wrap; word-break: break-word; }
+
+/* 待确认卡片：整块用暖色描边，和「会改动数据」的语气一致 */
+.confirm-card { border: 1px solid rgba(255,176,32,.5); background: rgba(255,176,32,.1); border-radius: 12px; padding: 12px; display: grid; gap: 8px; }
+.confirm-title { margin: 0; font-size: 12.5px; font-weight: 700; color: #FFD37A; }
+.confirm-row { display: flex; align-items: baseline; gap: 8px; font-size: 12px; color: rgba(255,255,255,.85); }
+.confirm-row .confirm-args { opacity: .6; font-size: 11.5px; }
+.confirm-risk { flex: 0 0 auto; font-size: 10.5px; font-weight: 700; border-radius: 5px; padding: 1px 6px; }
+.confirm-risk.WRITE { background: rgba(255,176,32,.28); color: #FFD37A; }
+.confirm-risk.READ { background: rgba(255,255,255,.14); color: rgba(255,255,255,.7); }
+.confirm-ops { display: flex; gap: 8px; margin-top: 2px; }
+.confirm-ok { border: 0; background: var(--warn-bright); color: #4A3200; font-weight: 700; font-size: 12.5px; border-radius: 8px; min-height: 32px; padding: 0 14px; }
+.confirm-ok:hover:not(:disabled) { background: #FFC24D; }
+.confirm-no { border: 1px solid rgba(255,255,255,.24); background: transparent; color: rgba(255,255,255,.75); border-radius: 8px; min-height: 32px; padding: 0 14px; font-size: 12.5px; }
+.confirm-no:hover:not(:disabled) { background: rgba(255,255,255,.1); }
+.confirm-ok:disabled, .confirm-no:disabled { opacity: .5; }
+
+.chat-empty { display: flex; flex-wrap: wrap; gap: 7px; }
+.chat-chip { border: 1px dashed rgba(255,255,255,.24); background: transparent; color: rgba(255,255,255,.7); border-radius: 99px; padding: 5px 11px; font-size: 11.8px; text-align: left; transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.chat-chip:hover:not(:disabled) { background: rgba(255,255,255,.1); color: #fff; }
+.chat-chip:disabled { opacity: .45; }
+
+.chat-err { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: #FFB08A; }
+
+.chat-input { display: flex; gap: 8px; margin-top: 10px; }
+.chat-input input { flex: 1; min-width: 0; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); color: #fff; border-radius: 10px; padding: 9px 12px; font-size: 12.8px; }
+.chat-input input::placeholder { color: rgba(255,255,255,.4); }
+.chat-input input:focus { border-color: rgba(255,255,255,.35); box-shadow: none; }
+.chat-input input:disabled { opacity: .6; }
+.chat-send { flex: 0 0 auto; border: 0; background: var(--primary); color: #fff; border-radius: 10px; min-height: 36px; padding: 0 15px; font-size: 12.8px; font-weight: 600; }
+.chat-send:hover:not(:disabled) { background: var(--primary-ink); }
+.chat-send:disabled { opacity: .45; }
+
+.chat-history { display: grid; gap: 4px; max-height: 168px; overflow-y: auto; margin-bottom: 10px; }
+.chat-history-item { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left; border: 1px solid transparent; background: rgba(255,255,255,.05); color: rgba(255,255,255,.8); border-radius: 8px; padding: 7px 10px; font-size: 12px; }
+.chat-history-item:hover { background: rgba(255,255,255,.12); color: #fff; }
+.chat-history-item.active { border-color: rgba(255,255,255,.3); color: #fff; }
+.chat-history-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-history-meta { flex: 0 0 auto; font-size: 10.5px; opacity: .55; }
+.chat-history-empty { margin: 0 0 10px; font-size: 12px; opacity: .55; }
+
 /* ---- 表单 ---- */
 .form-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .form-row input, .form-row select { flex: 1 1 150px; min-width: 0; }

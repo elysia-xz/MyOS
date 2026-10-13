@@ -1,12 +1,30 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { api } from '../api'
+import type { ChatMsg, PendingCall } from '../composables/useAiChat'
 
-const props = defineProps<{ available: boolean; result: string }>()
+const props = defineProps<{
+  available: boolean
+  result: string
+  convId: number | null
+  msgs: ChatMsg[]
+  pending: PendingCall[]
+  chatBusy: boolean
+  chatErr: string
+  conversations: any[]
+  historyOpen: boolean
+  loadingHistory: boolean
+}>()
 const emit = defineEmits<{
   (e: 'refresh'): void
   (e: 'configure'): void
   (e: 'result', text: string): void
+  (e: 'send', text: string): void
+  (e: 'confirm', ids: string[]): void
+  (e: 'cancel', ids: string[]): void
+  (e: 'newChat'): void
+  (e: 'toggleHistory'): void
+  (e: 'openConversation', id: number): void
 }>()
 
 // 生成结果由父组件持有（见下方注释），这里只保留瞬时状态
@@ -19,6 +37,41 @@ const actions = [
   { key: 'review', label: '复盘今天', run: () => api.aiDailyReview() },
   { key: 'month', label: '本月总结', run: () => api.aiMonthlySummary() }
 ]
+
+const draft = ref('')
+
+/** 回车发送。shift+enter 留给换行（输入框是单行的，这里只是防呆） */
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    doSend()
+  }
+}
+
+function doSend() {
+  const text = draft.value.trim()
+  if (!text || props.chatBusy) return
+  draft.value = ''
+  emit('send', text)
+}
+
+/** 行内时间：只到分，列表里不需要秒 */
+function hm(s?: string) {
+  if (!s) return ''
+  return String(s).slice(11, 16)
+}
+
+/** 参数摘要：title=甲任务A | priority=HIGH */
+function argSummary(c: PendingCall) {
+  try {
+    const o = JSON.parse(c.arguments || '{}')
+    return Object.entries(o)
+      .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
+      .join(' | ')
+  } catch {
+    return ''
+  }
+}
 
 /**
  * 模型偶尔会自带 markdown 记号（**加粗**、# 标题、- 列表）。
@@ -123,6 +176,111 @@ async function copy() {
       <div v-else-if="props.result" class="ai-out">
         <pre>{{ props.result }}</pre>
         <button class="ai-copy" type="button" @click="copy">{{ copied ? '已复制' : '复制正文' }}</button>
+      </div>
+
+      <!-- ============ 问答 / 办事（二期）============ -->
+      <div class="chat-block">
+        <div class="chat-head">
+          <span>或者直接问我</span>
+          <span class="chat-head-ops">
+            <button class="chat-op" type="button" :disabled="props.chatBusy" @click="emit('newChat')">
+              新对话
+            </button>
+            <button class="chat-op" type="button" :disabled="props.chatBusy" @click="emit('toggleHistory')">
+              {{ props.historyOpen ? '收起历史' : '历史' }}
+            </button>
+          </span>
+        </div>
+
+        <!-- 历史会话列表 -->
+        <div v-if="props.historyOpen" class="chat-history">
+          <p v-if="props.loadingHistory" class="chat-history-empty">正在读取…</p>
+          <p v-else-if="!props.conversations.length" class="chat-history-empty">还没有历史对话</p>
+          <button
+            v-for="c in props.conversations"
+            :key="c.id"
+            class="chat-history-item"
+            type="button"
+            :class="{ active: String(c.id) === String(props.convId) }"
+            @click="emit('openConversation', Number(c.id))"
+          >
+            <span class="chat-history-title">{{ c.title || '未命名对话' }}</span>
+            <span class="chat-history-meta">{{ c.messageCount ?? 0 }} 条</span>
+          </button>
+        </div>
+
+        <!-- 消息流 -->
+        <div v-if="props.msgs.length || props.pending.length" class="chat-log">
+          <div v-for="(m, i) in props.msgs" :key="i" class="chat-row" :class="m.role">
+            <template v-if="m.role === 'tool'">
+              <div class="chat-tool">已执行：{{ m.content }}</div>
+            </template>
+            <template v-else>
+              <div class="chat-bubble" :class="m.role">
+                <span v-if="hm(m.createdAt)" class="chat-time">{{ hm(m.createdAt) }}</span>
+                {{ m.content }}
+              </div>
+            </template>
+          </div>
+
+          <!-- 待确认卡片：写操作一律停在这里，点了确认才会真的落库 -->
+          <div v-if="props.pending.length" class="confirm-card">
+            <p class="confirm-title">
+              待确认（{{ props.pending.filter(c => c.risk === 'WRITE').length }} 项会改动数据）
+            </p>
+            <div v-for="c in props.pending" :key="c.id" class="confirm-row" :class="c.risk">
+              <span class="confirm-risk" :class="c.risk">{{ c.risk === 'WRITE' ? '写' : '读' }}</span>
+              <span class="confirm-label">{{ c.label || c.name }}</span>
+              <span class="confirm-args">{{ argSummary(c) }}</span>
+            </div>
+            <div class="confirm-ops">
+              <button
+                class="confirm-ok"
+                type="button"
+                :disabled="props.chatBusy"
+                @click="emit('confirm', props.pending.map(c => c.id))"
+              >
+                {{ props.chatBusy ? '处理中…' : '确认执行' }}
+              </button>
+              <button
+                class="confirm-no"
+                type="button"
+                :disabled="props.chatBusy"
+                @click="emit('cancel', props.pending.map(c => c.id))"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 空态：给两句可直接点的提示，降低「不知道能干嘛」的门槛 -->
+        <div v-else-if="!props.pending.length" class="chat-empty">
+          <button class="chat-chip" type="button" :disabled="props.chatBusy" @click="emit('send', '我现在有哪些任务没完成？')">
+            我现在有哪些任务没完成？
+          </button>
+          <button class="chat-chip" type="button" :disabled="props.chatBusy" @click="emit('send', '帮我记一下：今天英语学了 45 分钟')">
+            今天英语学了 45 分钟，帮我记一下
+          </button>
+          <button class="chat-chip" type="button" :disabled="props.chatBusy" @click="emit('send', '帮我建一条任务：周末整理本周复盘')">
+            帮我建一条任务：周末整理本周复盘
+          </button>
+        </div>
+
+        <p v-if="props.chatErr" class="chat-err">{{ props.chatErr }}</p>
+
+        <div class="chat-input">
+          <input
+            v-model="draft"
+            type="text"
+            placeholder="问点什么，或者说「帮我创建一条任务」"
+            :disabled="props.chatBusy"
+            @keydown="onKeydown"
+          />
+          <button class="chat-send" type="button" :disabled="props.chatBusy || !draft.trim()" @click="doSend">
+            {{ props.chatBusy ? '…' : '发送' }}
+          </button>
+        </div>
       </div>
     </template>
   </div>
