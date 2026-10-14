@@ -7,7 +7,11 @@ services:
       POSTGRES_USER: myos
       POSTGRES_PASSWORD: myos123
     ports:
-      - "5432:5432"
+      # 发布到 15432：开发机本地的 PostgreSQL 占着 5432（本地开发库在跑），
+      # 直接 5432:5432 会端口冲突起不来。容器间 server→postgres 走服务名+5432，
+      # 不受影响；只有宿主 psql 连接时要带 -p 15432。
+      # 上 VPS 时如无冲突，可改回 "5432:5432"。
+      - "15432:5432"
     volumes:
       - myos_pgdata:/var/lib/postgresql/data
       # 执行顺序即文件名字典序：先建基础表 → 再打增量 → 最后灌演示数据

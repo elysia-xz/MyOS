@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  仅供 Docker 镜像构建使用（见 myos-server/Dockerfile）。
+  宿主机的 ~/.m2/settings.xml 不会进构建上下文，容器内 mvn 默认直连
+  Maven Central，国内网络下又慢又容易超时，image build 就卡死在
+  dependency:go-offline。这里只放公共镜像，不放任何本地仓库地址与凭据。
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+  <mirrors>
+    <mirror>
+      <id>aliyun</id>
+      <mirrorOf>central</mirrorOf>
+      <name>阿里云公共仓库</name>
+      <url>https://maven.aliyun.com/nexus/content/groups/public</url>
+    </mirror>
+  </mirrors>
+</settings>

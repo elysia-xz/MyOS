@@ -1,9 +1,11 @@
 FROM maven:3.9.11-eclipse-temurin-25 AS build
 WORKDIR /app
-COPY pom.xml .
-RUN mvn -q -DskipTests dependency:go-offline
+# 容器内没有宿主机的 ~/.m2/settings.xml，不带镜像会直连 Maven Central，
+# 国内网络下慢且易超时。docker-settings.xml 只有公共镜像、无凭据。
+COPY docker-settings.xml .
+RUN mvn -q -s docker-settings.xml -DskipTests dependency:go-offline
 COPY src ./src
-RUN mvn -q -DskipTests package
+RUN mvn -q -s docker-settings.xml -DskipTests package
 
 FROM eclipse-temurin:25-jre
 WORKDIR /app
