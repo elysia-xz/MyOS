@@ -33,9 +33,22 @@ public class AuthController {
     private final TokenService tokenService;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
-    public AuthController(JdbcTemplate jdbc, TokenService tokenService) {
+    /**
+     * 强制把默认账号口令重置为文档值（一次性救急开关）。
+     *
+     * 存在理由：库里出现「格式合法但内容错误」的 bcrypt 时，登录必然失败，
+     * 而下面的自愈逻辑按设计**不会**覆盖它（怕推翻用户自己改的密码）——
+     * 于是没有任何自救路径，只能手写 SQL 生成哈希。
+     * 用 MYOS_AUTH_RESET_DEFAULT=true 起一次后端即可复位，用完去掉即可。
+     */
+    private final boolean forceResetDefaultPassword;
+
+    public AuthController(JdbcTemplate jdbc, TokenService tokenService,
+                          @org.springframework.beans.factory.annotation.Value(
+                                  "${myos.auth.reset-default:false}") boolean forceResetDefaultPassword) {
         this.jdbc = jdbc;
         this.tokenService = tokenService;
+        this.forceResetDefaultPassword = forceResetDefaultPassword;
         ensureDefaultUser();
     }
 
@@ -75,13 +88,24 @@ public class AuthController {
 
             Object stored = rows.get(0).get("password_hash");
             String hash = stored == null ? null : stored.toString();
-            if (!isBcryptHash(hash)) {
+            if (!isBcryptHash(hash) || forceResetDefaultPassword) {
                 String before = hash == null ? "(空)" : hash.length() > 24 ? hash.substring(0, 24) + "…" : hash;
                 jdbc.update("update my_user set password_hash = ? where username = ?",
                         encoder.encode(DEFAULT_PASSWORD), DEFAULT_USERNAME);
-                log.warn("默认账号 {} 的口令哈希不是合法 bcrypt（原值 {}），已重置为文档值。"
-                        + "若这是你自己改过的密码被误判，请检查 isBcryptHash 的判定",
-                        DEFAULT_USERNAME, before);
+                log.warn("默认账号 {} 的口令哈希{}（原值 {}），已重置为文档值。"
+                                + "若这是你自己改过的密码被误判，请检查 isBcryptHash 的判定",
+                        DEFAULT_USERNAME,
+                        forceResetDefaultPassword ? "被 MYOS_AUTH_RESET_DEFAULT 强制重置" : "不是合法 bcrypt",
+                        before);
+            } else if (!encoder.matches(DEFAULT_PASSWORD, hash)) {
+                // ⚠️ 这个分支是真实踩过的坑：哈希格式合法、但谁都不匹配。
+                // 旧代码只判格式，于是这种值被静默尊重 → 登录页永远「用户名或密码错误」，
+                // 日志里一个字都没有，排查全靠猜（本次就是这么卡住的）。
+                // 不自动覆盖是对的（可能是用户自己改的密码），但必须留下线索 + 自救路径。
+                log.warn("默认账号 {} 的口令不是文档值 {}（哈希格式合法但校验不通过）。"
+                                + "若这是你自己改过的密码请忽略；若登录不上，"
+                                + "用环境变量 MYOS_AUTH_RESET_DEFAULT=true 重启后端一次即可复位。",
+                        DEFAULT_USERNAME, DEFAULT_PASSWORD);
             }
         } catch (Exception e) {
             // 表尚未初始化时不阻塞应用启动
