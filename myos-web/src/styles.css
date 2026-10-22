@@ -344,6 +344,15 @@ label.field > .field-head small { font-weight: 400; font-size: 11.5px; color: va
 .quote-field { display: grid; gap: 6px; }
 .quote-field input { border-left: 3px solid var(--primary); background: var(--primary-bg); }
 .quote-hint { font-size: 11.5px; line-height: 1.5; color: var(--faint); }
+
+/* 归属项目（写一篇处）—— 与 quote-field 同一套「带说明的字段」语言 */
+.project-bind { display: grid; gap: 6px; }
+.project-bind select { border-left: 3px solid var(--faint); }
+.bind-hint { font-size: 11.5px; line-height: 1.5; color: var(--faint); }
+/* 列表里表示归属的项目标签：不用主色，避免和「已发布」抢注意力 */
+.tag.project-tag { margin-left: 6px; border-color: var(--line2); color: var(--muted); }
+/* 项目详情里的产出行：标题占满，状态标签靠右 */
+.content-sink .txt { flex: 1 1 auto; }
 /* 选择器需带 .entry 前缀：单靠 .entry-quote 会被 .entry p 的样式盖掉 */
 .entry .entry-quote { margin: 0 0 8px; padding: 8px 12px; border-left: 3px solid var(--primary); background: var(--primary-bg); border-radius: 0 8px 8px 0; color: var(--primary-ink); font-size: 12.5px; font-weight: 600; line-height: 1.65; }
 

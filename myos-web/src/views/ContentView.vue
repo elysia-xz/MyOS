@@ -7,8 +7,12 @@ const { push: toast } = useToast()
 
 const records = ref<any[]>([])
 const calendar = ref<any>({ days: [], publishedDays: 0, targetDays: 30 })
+// 项目列表：写一篇时可挂到某个项目下，
+// 这样项目详情能反查出「这个项目产出了什么」。
+const projects = ref<any[]>([])
 // quote：本篇的一句话提炼。它属于这篇文章，不单独存一个语录库。
-const form = ref({ title: '', platform: 'X', content: '', quote: '' })
+// projectId：可空 —— 随手记录不必挂项目。
+const form = ref({ title: '', platform: 'X', content: '', quote: '', projectId: null as number | null })
 const saving = ref(false)
 
 const weekHeads = ['一', '二', '三', '四', '五', '六', '日']
@@ -22,21 +26,24 @@ const leadingBlanks = computed(() => {
 })
 
 async function load() {
-  const [c, cal] = await Promise.all([api.contents(), api.contentCalendar()])
+  const [c, cal, ps] = await Promise.all([api.contents(), api.contentCalendar(), api.projects()])
   // 包成新数组：演示数据每次返回同一个数组引用，
   // 直接赋值会被 Vue 判定为"没变化"，新增/删除后列表不刷新。
   records.value = [...(c.data.data || [])]
   calendar.value = cal.data.data
+  projects.value = ps.data.data || []
 }
 
 async function add() {
   if (!form.value.title.trim()) return
   saving.value = true
   try {
+    // 先取出项目名：下面清空表单后就读不到了
+    const bindName = projects.value.find((p) => p.id === form.value.projectId)?.name
     await api.createContent({ ...form.value, status: 'DRAFT' })
-    form.value = { title: '', platform: 'X', content: '', quote: '' }
+    form.value = { title: '', platform: 'X', content: '', quote: '', projectId: null }
     await load()
-    toast('已保存草稿', 'ok')
+    toast(bindName ? `已保存草稿，归属「${bindName}」` : '已保存草稿', 'ok')
   } finally {
     saving.value = false
   }
@@ -81,6 +88,16 @@ onMounted(load)
           </select>
           <textarea v-model="form.content" class="large" placeholder="正文…"></textarea>
 
+          <!-- 归属项目：把「输出」挂回「项目」，链路才闭合。
+               可留空，随手记录不必每个都属于某个项目。 -->
+          <div class="project-bind">
+            <select v-model="form.projectId">
+              <option :value="null">不归属项目（随手记录）</option>
+              <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
+            <span class="bind-hint">挂到项目下，项目详情里就能看到「这个项目产出了什么」。</span>
+          </div>
+
           <!-- 语录：跟着这一篇走，不单独建语录库 -->
           <div class="quote-field">
             <input v-model="form.quote" placeholder="留一句最想留下的话（可选）" />
@@ -109,6 +126,8 @@ onMounted(load)
           <div v-for="r in records" :key="r.id" class="entry">
             <span class="tag" :class="r.status === 'PUBLISHED' ? 'ok' : ''">{{ r.status === 'PUBLISHED' ? '已发布' : '草稿' }}</span>
             <span class="tag" style="margin-left: 6px">{{ r.platform }}</span>
+            <!-- 归属项目：把孤立的输出接回项目 -->
+            <span v-if="r.projectName" class="tag project-tag" :title="'归属于项目：' + r.projectName">{{ r.projectName }}</span>
             <h3>{{ r.title }}</h3>
             <p v-if="r.quote" class="entry-quote">「{{ r.quote }}」</p>
             <p>{{ (r.content || '暂无正文').slice(0, 120) }}</p>

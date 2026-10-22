@@ -19,9 +19,11 @@ import java.util.Map;
 public class ProjectController {
 
     private final ProjectMapper mapper;
+    private final com.myos.content.ContentMapper contentMapper;
 
-    public ProjectController(ProjectMapper mapper) {
+    public ProjectController(ProjectMapper mapper, com.myos.content.ContentMapper contentMapper) {
         this.mapper = mapper;
+        this.contentMapper = contentMapper;
     }
 
     @GetMapping
@@ -62,11 +64,15 @@ public class ProjectController {
 
     @GetMapping("/{id}")
     public ApiResponse<?> detail(@PathVariable Long id) {
-        Project p = mapper.findById(CurrentUser.id(), id);
+        Long uid = CurrentUser.id();
+        Project p = mapper.findById(uid, id);
         if (p == null) return ApiResponse.fail("项目不存在");
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("project", p);
-        out.put("logs", mapper.findLogs(CurrentUser.id(), id));
+        out.put("logs", mapper.findLogs(uid, id));
+        // 这个项目产出了什么内容 —— 「一次行动产生多个结果」链路的收口处，
+        // 复盘和作品集都从这里取数
+        out.put("contents", contentMapper.findByProject(uid, id));
         return ApiResponse.ok(out);
     }
 

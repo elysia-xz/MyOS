@@ -201,6 +201,14 @@ onMounted(load)
           <div><div class="hint" style="font-size: 11.5px; color: var(--faint)">解决方案</div><p style="font-size: 13px; margin: 4px 0 0">{{ detail.project.solution || '—' }}</p></div>
         </div>
 
+        <div class="card-title" style="margin-top: 24px"><span>这个项目产出的内容</span><span class="hint">{{ detail.contents?.length || 0 }} 篇</span></div>
+        <div v-if="!detail.contents?.length" class="empty">还没有挂在这个项目下的输出。去「输出」写一篇并选择归属本项目。</div>
+        <div v-for="c in detail.contents" :key="c.id" class="sink-item content-sink">
+          <span class="dot"></span>
+          <span class="txt">{{ c.title }}</span>
+          <span class="tag" :class="c.status === 'PUBLISHED' ? 'ok' : ''">{{ c.status === 'PUBLISHED' ? '已发布' : '草稿' }}</span>
+        </div>
+
         <div class="card-title" style="margin-top: 24px"><span>开发日志</span></div>
         <div class="form-row" style="margin-bottom: 10px">
           <input v-model="logText" placeholder="今天这个项目推进了什么？" @keyup.enter="addLog" />

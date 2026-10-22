@@ -2,11 +2,29 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.myos.content.ContentMapper">
 
+  <!--
+    带出 project_name 供界面显示归属，避免前端为每条内容再查一次项目。
+    用 LEFT JOIN：project_id 可空，未挂项目的输出不能被过滤掉。
+  -->
+  <sql id="baseColumns">
+    c.id, c.title, c.platform, c.content, c.quote, c.status, c.published_at,
+    c.views, c.likes, c.project_id, p.name AS project_name
+  </sql>
+
   <select id="findByUserId" resultType="com.myos.content.ContentRecord">
-    SELECT id, title, platform, content, quote, status, published_at, views, likes
-    FROM content_record
-    WHERE user_id = #{userId}
-    ORDER BY created_at DESC, id DESC
+    SELECT <include refid="baseColumns"/>
+    FROM content_record c
+    LEFT JOIN project p ON p.id = c.project_id
+    WHERE c.user_id = #{userId}
+    ORDER BY c.created_at DESC, c.id DESC
+  </select>
+
+  <select id="findByProject" resultType="com.myos.content.ContentRecord">
+    SELECT <include refid="baseColumns"/>
+    FROM content_record c
+    LEFT JOIN project p ON p.id = c.project_id
+    WHERE c.user_id = #{userId} AND c.project_id = #{projectId}
+    ORDER BY c.created_at DESC, c.id DESC
   </select>
 
   <!--
@@ -17,16 +35,18 @@
     改成 select 直接返回 id，由调用方组装带 id 的返回体。
   -->
   <select id="insert" resultType="long" flushCache="true">
-    INSERT INTO content_record(user_id, title, platform, content, quote, status, published_at)
+    INSERT INTO content_record(user_id, title, platform, content, quote, status, published_at, project_id)
     VALUES (#{userId}, #{record.title}, #{record.platform}, #{record.content}, #{record.quote},
             COALESCE(#{record.status}, 'DRAFT'),
-            CASE WHEN #{record.status} = 'PUBLISHED' THEN CURRENT_TIMESTAMP ELSE NULL END)
+            CASE WHEN #{record.status} = 'PUBLISHED' THEN CURRENT_TIMESTAMP ELSE NULL END,
+            #{record.projectId})
     RETURNING id
   </select>
 
   <update id="update">
     UPDATE content_record SET title = #{title}, platform = #{platform}, content = #{content},
            quote = #{quote},
+           project_id = #{projectId},
            updated_at = CURRENT_TIMESTAMP
     WHERE id = #{id} AND user_id = #{userId}
   </update>
@@ -50,5 +70,8 @@
       AND created_at >= #{from} AND created_at &lt; (#{to}::date + INTERVAL '1 day')
     GROUP BY 1
     ORDER BY 1
+  </select>
+  <select id="countOwnedProject" resultType="int">
+    SELECT COUNT(*) FROM project WHERE id = #{projectId} AND user_id = #{userId}
   </select>
 </mapper>

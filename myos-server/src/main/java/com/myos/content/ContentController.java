@@ -36,18 +36,27 @@ public class ContentController {
 
     @PostMapping
     public ApiResponse<?> create(@Valid @RequestBody CreateRequest req) {
+        Long uid = CurrentUser.id();
+        String bad = checkProject(uid, req.projectId());
+        if (bad != null) return ApiResponse.fail(bad);
+
         ContentRecord record = new ContentRecord(null, req.title(), req.platform(), req.content(),
                 trimToNull(req.quote()),
-                req.status() == null ? "DRAFT" : req.status(), null, 0, 0);
-        long id = mapper.insert(CurrentUser.id(), record);
+                req.status() == null ? "DRAFT" : req.status(), null, 0, 0,
+                req.projectId(), null);
+        long id = mapper.insert(uid, record);
         return ApiResponse.ok(record.withId(id));
     }
 
     @PutMapping("/{id}")
     public ApiResponse<?> update(@PathVariable Long id,
                                  @Valid @RequestBody UpdateRequest req) {
-        int n = mapper.update(CurrentUser.id(), id, req.title(), req.platform(), req.content(),
-                trimToNull(req.quote()));
+        Long uid = CurrentUser.id();
+        String bad = checkProject(uid, req.projectId());
+        if (bad != null) return ApiResponse.fail(bad);
+
+        int n = mapper.update(uid, id, req.title(), req.platform(), req.content(),
+                trimToNull(req.quote()), req.projectId());
         return n == 1 ? ApiResponse.ok(true) : ApiResponse.fail("内容不存在");
     }
 
@@ -106,9 +115,22 @@ public class ContentController {
         return t.isEmpty() ? null : t;
     }
 
+    /**
+     * 项目归属校验：null 表示合法（不挂项目），否则返回错误文案。
+     * 直接拒绝比让它撞外键更友好 —— 外键失败用户只会看到「服务器内部错误」。
+     */
+    private String checkProject(Long uid, Long projectId) {
+        if (projectId == null) return null;
+        return mapper.countOwnedProject(uid, projectId) > 0 ? null : "项目不存在或无权访问";
+    }
+
     public record CreateRequest(@NotBlank String title, String platform, String content,
-                                String quote, String status) {}
+                                String quote, String status,
+                                // 归属项目，可空
+                                Long projectId) {}
 
     public record UpdateRequest(@NotBlank String title, String platform, String content,
-                                String quote) {}
+                                String quote,
+                                // 传 null 表示取消归属
+                                Long projectId) {}
 }

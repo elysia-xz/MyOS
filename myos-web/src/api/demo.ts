@@ -109,18 +109,39 @@ const learning = [
   }
 ]
 
-const contents = [
+/**
+ * 必须显式标注类型：不加的话 TS 会把数组推断成「两个字面量形状的联合」，
+ * projectName 在第二条里是 null 字面量，往数组里 unshift 就报
+ * 「string 不能赋给 null」。这类推断在对象字面量数组里很常见。
+ */
+type DemoContent = {
+  id: number
+  title: string
+  platform: string
+  content: string
+  quote: string | null
+  status: string
+  publishedAt: string | null
+  views: number
+  likes: number
+  projectId: number | null
+  projectName: string | null
+}
+
+const contents: DemoContent[] = [
   {
     id: 1, title: '我是如何用工作台管理每天行动的', platform: 'X',
     content: '把「我要学很多东西」换成「今天 7 个系统分别有没有向前走一点」。',
     quote: '不要用忙碌感代替进展。',
-    status: 'PUBLISHED', publishedAt: TODAY + 'T12:00:00', views: 128, likes: 23
+    status: 'PUBLISHED', publishedAt: TODAY + 'T12:00:00', views: 128, likes: 23,
+    projectId: 1, projectName: 'MyOS 私人工作台'
   },
   {
     id: 2, title: '为什么我放弃了待办清单', platform: '国内自媒体',
     content: '清单只记录「要做什么」，不记录「做成了什么」。',
     quote: '把注意力放在能积累的事情上，而不是能立刻被看见的事情上。',
-    status: 'DRAFT', publishedAt: null, views: 0, likes: 0
+    status: 'DRAFT', publishedAt: null, views: 0, likes: 0,
+    projectId: null, projectName: null
   }
 ]
 
@@ -200,6 +221,8 @@ export const demoData: Record<string, any> = {
   ],
   '/projects/1': {
     project: projects[0],
+    // 项目详情要能展示「这个项目产出了什么」，演示数据也得带上
+    contents: contents.filter(c => c.projectId === 1),
     logs: [
       { id: 1, projectId: 1, logDate: TODAY, content: '完成 7 系统打点与首页水位条联动', commitRef: 'a1b2c3d' },
       { id: 2, projectId: 1, logDate: TODAY, content: '重写 Dashboard 聚合接口', commitRef: 'e4f5g6h' }
@@ -326,6 +349,8 @@ export function applyDemoWrite(url: string, method: string, body: any) {
 
   // ---- 内容输出 ----
   if (path === '/contents' && method === 'post') {
+    // 后端会连表带回 projectName，演示模式自己补上，界面才一致
+    const pid = body?.projectId ?? null
     contents.unshift({
       id: Date.now(),
       title: body?.title || '',
@@ -335,7 +360,9 @@ export function applyDemoWrite(url: string, method: string, body: any) {
       status: body?.status || 'DRAFT',
       publishedAt: null,
       views: 0,
-      likes: 0
+      likes: 0,
+      projectId: pid,
+      projectName: pid ? (projects.find(p => p.id === pid)?.name ?? null) : null
     })
     return
   }

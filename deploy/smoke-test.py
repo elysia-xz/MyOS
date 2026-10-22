@@ -313,6 +313,41 @@ if proj_ok:
     status, env, text = call("GET", "/projects/%s/logs" % pid, token=TOKEN)
     check("GET /projects/{id}/logs", status == 200 and ok_envelope(env), text[:160])
 
+    # 「一次行动产生多个结果」链路的收口：输出能挂到项目，项目能反查出产出。
+    # 这两条一起才有意义 —— 只测写不测读，project_id 拼错也发现不了。
+    status, env, text = call("POST", "/contents", {
+        "title": TAG + " 挂项目的输出", "platform": "X", "content": "验证归属",
+        "status": "DRAFT", "projectId": pid,
+    }, token=TOKEN)
+    bind_ok = status == 200 and ok_envelope(env)
+    check("POST /contents（带 projectId 归属）", bind_ok, text[:200])
+    if bind_ok:
+        bind_cid = env["data"]["id"]
+        check("projectId 正确回存", env["data"].get("projectId") == pid,
+              "实际 %r" % env["data"].get("projectId"))
+
+        status, env, text = call("GET", "/projects/%s" % pid, token=TOKEN)
+        got = []
+        if status == 200 and ok_envelope(env):
+            got = (env.get("data") or {}).get("contents") or []
+        check("项目详情能反查出产出的内容（LEFT JOIN）",
+              any(c.get("id") == bind_cid for c in got),
+              "产出 %d 条" % len(got))
+        # projectName 来自 join，能证明关联真的在库里而不只是回了入参
+        check("产出内容带出项目名",
+              any(c.get("projectName") == TAG + " 冒烟项目" for c in got),
+              str([c.get("projectName") for c in got]))
+
+        status, env, text = call("DELETE", "/contents/%s" % bind_cid, token=TOKEN)
+        check("DELETE /contents（清理归属内容）", status == 200 and ok_envelope(env), text[:160])
+
+    # 不存在的项目 id 必须是「友好拒绝」而不是撞外键 500
+    status, env, text = call("POST", "/contents", {
+        "title": TAG + " 非法归属", "platform": "X", "content": "x", "projectId": 99999999,
+    }, token=TOKEN)
+    check("非法 projectId 被拒绝（不是 500）",
+          status == 200 and not ok_envelope(env), text[:160])
+
     status, env, text = call("DELETE", "/projects/%s" % pid, token=TOKEN)
     check("DELETE /projects/{id}（清理）", status == 200 and ok_envelope(env), text[:160])
 
