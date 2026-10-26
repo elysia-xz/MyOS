@@ -453,9 +453,65 @@ else:
 
 
 # ----------------------------------------------------------------------
-# 10. AI 网关（未配 Key 时应优雅降级，不是崩溃）
+# 10. 数据导出
 # ----------------------------------------------------------------------
-section("[10] AI 网关")
+section("[10] 数据导出")
+
+# 未登录必须拿不到 —— 导出的是全部个人数据，这里漏了等于把整库公开
+status, env, text = call("GET", "/export")
+check("GET /export 未登录返回 401", status == 401, "HTTP %s" % status)
+
+status, env, text = call("GET", "/export", token=TOKEN)
+check("GET /export", status == 200 and isinstance(env, dict) and "data" in env, text[:120])
+
+if status == 200 and isinstance(env, dict):
+    payload = env
+    meta = payload.get("meta") or {}
+    data = payload.get("data") or {}
+    counts = meta.get("counts") or {}
+
+    check("导出含 meta（时间/用户/计数）",
+          bool(meta.get("exportedAt")) and meta.get("userId") is not None,
+          json.dumps({k: meta.get(k) for k in ("exportedAt", "userId")}, ensure_ascii=False))
+
+    check("导出含 14 个数据集合",
+          len(data) == 14, "实际 %d 个：%s" % (len(data), ",".join(sorted(data))))
+
+    check("没有取不到的表",
+          not meta.get("failedTables"),
+          "失败表：%s" % meta.get("failedTables"))
+
+    # counts 必须和实际条数一致，否则「看起来成功、实际少了一半」
+    mismatch = [k for k, v in counts.items() if len(data.get(k) or []) != v]
+    check("counts 与实际条数一致", not mismatch, "不一致：%s" % mismatch)
+
+    # 与列表接口对得上：/tasks 是「今日视图」（当天 + 无日期 + 逾期未完成），
+    # 导出是全量，所以只能验「包含」而不是「相等」——
+    # 写成相等会误判成 bug（第一版就踩了：导出 14 条、视图 13 条）。
+    status, env2, text2 = call("GET", "/tasks", token=TOKEN)
+    api_tasks = env2.get("data") or [] if ok_envelope(env2) else []
+    exported_ids = {t.get("id") for t in (data.get("tasks") or [])}
+    missing = [t.get("id") for t in api_tasks if t.get("id") not in exported_ids]
+    check("导出的任务覆盖今日视图的全部任务",
+          bool(api_tasks) and not missing,
+          "视图中 %d 条，缺失 %s" % (len(api_tasks), missing or "无"))
+
+    # 🔴 安全红线：凭据绝不能出现在导出文件里
+    lowered = text.lower()
+    leaked = [w for w in ("password_hash", "passwordhash", "$2a$", "user_token", "token_id") if w in lowered]
+    check("导出不含口令哈希/令牌", not leaked, "命中：%s" % leaked)
+
+    # 内容归属字段应该被带上（v1.6 的链路要能跟着数据一起走）
+    first_content = (data.get("contentRecords") or [{}])[0]
+    check("导出的内容记录带 projectId 字段",
+          "project_id" in first_content or "projectId" in first_content,
+          "字段：%s" % ",".join(list(first_content)[:6]))
+
+
+# ----------------------------------------------------------------------
+# 11. AI 网关（未配 Key 时应优雅降级，不是崩溃）
+# ----------------------------------------------------------------------
+section("[11] AI 网关")
 status, env, text = call("GET", "/ai/status", token=TOKEN)
 check("GET /ai/status", status == 200 and ok_envelope(env),
       "available=%s（未配 Key 时为 false 属正常）"
@@ -463,9 +519,9 @@ check("GET /ai/status", status == 200 and ok_envelope(env),
 
 
 # ----------------------------------------------------------------------
-# 11. 登出
+# 12. 登出
 # ----------------------------------------------------------------------
-section("[11] 登出")
+section("[12] 登出")
 status, env, text = call("POST", "/auth/logout", token=TOKEN)
 check("POST /auth/logout（撤销当前令牌）", status == 200 and ok_envelope(env), text[:160])
 

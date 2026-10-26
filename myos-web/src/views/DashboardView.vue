@@ -282,8 +282,42 @@ async function load(silent = false) {
   }
 }
 
-/** AI 生成完成后刷新数据并给出反馈 */
-function onAiRefresh() {
+/**
+ * 导出全部数据为 JSON 文件。
+ *
+ * 后端带 Content-Disposition 返回文件，这里用 blob + 临时 a 标签触发下载，
+ * 文件名的中文/英文都由后端给，前端不重复拼一遍。
+ *
+ * 演示模式下没有真实数据可导 —— 明确告知，而不是导出一份假的。
+ */
+const exporting = ref(false)
+async function exportData() {
+  if (runtime.demoMode) {
+    toast('演示模式没有真实数据可导出，请连接后端后再试')
+    return
+  }
+  exporting.value = true
+  try {
+    const res: any = await api.exportData()
+    const blob = new Blob([res.data], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `myos-export-${new Date().toISOString().slice(0, 10)}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    // 不 revoke 的话 blob 一直占内存，导出几次之后会明显变卡
+    URL.revokeObjectURL(url)
+    toast('已导出全部数据', 'ok')
+  } catch {
+    toast('导出失败：请确认后端已启动')
+  } finally {
+    exporting.value = false
+  }
+}
+
+/** AI 生成完成后刷新数据并给出反馈 */function onAiRefresh() {
   toast('AI 已生成内容', 'ok')
   load(true)
 }
@@ -301,7 +335,12 @@ onMounted(load)
       </div>
       <!-- 必须写成 load()：直接写 load 会把点击事件当成 silent 参数传进去，
            手动点刷新就再也看不到加载态了 -->
-      <button class="ghost" @click="load()">刷新</button>
+      <div class="head-actions">
+        <button class="ghost" :disabled="exporting" @click="exportData">
+          {{ exporting ? '导出中…' : '导出数据' }}
+        </button>
+        <button class="ghost" @click="load()">刷新</button>
+      </div>
     </div>
 
     <div v-if="loading" class="card loading">正在加载成长数据…</div>

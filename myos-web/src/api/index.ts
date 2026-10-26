@@ -102,5 +102,10 @@ export const api = {
   aiToolCancel: (data: { conversationId: number; calls: { id: string }[] }) =>
     http.post('/ai/tool/cancel', data),
   aiConversations: () => http.get('/ai/conversations'),
-  aiConversation: (id: number) => http.get(`/ai/conversations/${id}`)
+  aiConversation: (id: number) => http.get(`/ai/conversations/${id}`),
+
+  // ---- 数据导出 ----
+  // responseType: 'blob' —— 后端带 Content-Disposition 直接给文件，
+  // 走 blob 才能保留「另存为」的原生体验与正确文件名。
+  exportData: () => http.get('/export', { responseType: 'blob' })
 }
