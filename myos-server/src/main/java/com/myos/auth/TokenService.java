@@ -97,6 +97,27 @@ public class TokenService {
         jdbc.update("delete from user_token where user_id = ?", userId);
     }
 
+    /**
+     * 撤销某用户**除当前令牌外**的全部令牌，返回撤销数量。
+     *
+     * 用在改密码之后：密码可能泄露时，这是「把别人踢下线」的补救手段；
+     * 但当前这台设备要保留，否则用户改完密码立刻被踢回登录页，
+     * 会以为改密码失败。
+     *
+     * @param rawToken 当前请求携带的明文令牌；为空时退化为撤销全部
+     */
+    public int revokeOthers(Long userId, String rawToken) {
+        if (rawToken == null || rawToken.isBlank()) {
+            // 拿不到当前令牌就保守处理：全部撤销，让用户重新登录一次
+            Integer n = jdbc.queryForObject(
+                    "select count(*) from user_token where user_id = ?", Integer.class, userId);
+            revokeAll(userId);
+            return n == null ? 0 : n;
+        }
+        return jdbc.update("delete from user_token where user_id = ? and token_hash <> ?",
+                userId, sha256(rawToken));
+    }
+
     /** 清理已过期令牌，供启动或定时任务调用 */
     public int purgeExpired() {
         return jdbc.update("delete from user_token where expires_at <= CURRENT_TIMESTAMP");

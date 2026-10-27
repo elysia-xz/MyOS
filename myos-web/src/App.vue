@@ -2,6 +2,7 @@
 import { useRoute, useRouter } from 'vue-router'
 import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from './stores/auth'
+import { api } from './api'
 import { runtime } from './api/http'
 import { useToast } from './composables/useToast'
 
@@ -9,7 +10,7 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const demo = ref(false)
-const { items: toasts } = useToast()
+const { items: toasts, push: toast } = useToast()
 
 const isLogin = computed(() => route.path === '/login')
 
@@ -80,6 +81,56 @@ const logoutIcon = icon(
     '<path d="M12 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h6"/>'
 )
 
+const keyIcon = icon(
+  '<circle cx="8" cy="15" r="4"/><path d="M10.85 12.15L19 4"/>' +
+    '<path d="M18 5l2 2"/><path d="M15 8l2 2"/>'
+)
+
+/** 改密码弹窗：多用户测试期每个人都要能自己换掉初始密码 */
+const pwdOpen = ref(false)
+const pwdForm = ref({ oldPassword: '', newPassword: '', confirm: '' })
+const pwdSaving = ref(false)
+const pwdError = ref('')
+
+function openPassword() {
+  pwdForm.value = { oldPassword: '', newPassword: '', confirm: '' }
+  pwdError.value = ''
+  pwdOpen.value = true
+}
+
+async function submitPassword() {
+  pwdError.value = ''
+  const f = pwdForm.value
+  if (!f.oldPassword) return (pwdError.value = '请输入原密码')
+  if (f.newPassword.length < 8) return (pwdError.value = '新密码至少 8 位')
+  if (f.newPassword !== f.confirm) return (pwdError.value = '两次输入的新密码不一致')
+
+  pwdSaving.value = true
+  try {
+    const res: any = await api.changePassword({
+      oldPassword: f.oldPassword,
+      newPassword: f.newPassword
+    })
+    if (res.data?.success === false) {
+      pwdError.value = res.data.message || '修改失败'
+      return
+    }
+    const revoked = res.data?.data?.revokedTokens
+    pwdOpen.value = false
+    toast(
+      revoked > 0
+        ? `密码已修改，其它 ${revoked} 个设备已退出登录`
+        : '密码已修改',
+      'ok'
+    )
+  } catch (e: any) {
+    // 后端把业务失败包在 200 里，只有网络/鉴权问题才会走这里
+    pwdError.value = e?.response?.data?.message || '修改失败，请重试'
+  } finally {
+    pwdSaving.value = false
+  }
+}
+
 function go(path: string) {
   router.push(path)
 }
@@ -128,6 +179,10 @@ onMounted(() => {
           <span class="avatar">{{ userInitial }}</span>
           <span class="user-name">{{ auth.user.nickname || auth.user.username }}</span>
         </div>
+        <button type="button" class="logout-btn" @click="openPassword">
+          <span class="nav-icon" aria-hidden="true" v-html="keyIcon"></span>
+          <span class="nav-label">修改密码</span>
+        </button>
         <button type="button" class="logout-btn" @click="logout">
           <span class="nav-icon" aria-hidden="true" v-html="logoutIcon"></span>
           <span class="nav-label">退出登录</span>
@@ -142,6 +197,37 @@ onMounted(() => {
       </div>
       <router-view />
     </main>
+  </div>
+
+  <!-- 修改密码 -->
+  <div v-if="pwdOpen" class="modal-mask" @click.self="pwdOpen = false">
+    <div class="modal" style="max-width: 420px">
+      <h2>修改密码</h2>
+      <p class="sub">改完只保留当前设备的登录，其它设备需要重新登录。</p>
+
+      <div class="form-card" style="margin-top: 16px">
+        <label class="pwd-field">
+          <span>原密码</span>
+          <input v-model="pwdForm.oldPassword" type="password" autocomplete="current-password" placeholder="当前使用的密码" />
+        </label>
+        <label class="pwd-field">
+          <span>新密码</span>
+          <input v-model="pwdForm.newPassword" type="password" autocomplete="new-password" placeholder="至少 8 位" />
+        </label>
+        <label class="pwd-field">
+          <span>确认新密码</span>
+          <input v-model="pwdForm.confirm" type="password" autocomplete="new-password" placeholder="再输入一次" @keyup.enter="submitPassword" />
+        </label>
+        <div v-if="pwdError" class="error">{{ pwdError }}</div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="ghost" @click="pwdOpen = false">取消</button>
+        <button class="primary" :disabled="pwdSaving" @click="submitPassword">
+          {{ pwdSaving ? '提交中…' : '确认修改' }}
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- 全局即时反馈挂载点 -->

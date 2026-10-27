@@ -8,6 +8,9 @@ export const api = {
     http.post('/auth/login', { username, password, device }),
   logout: () => http.post('/auth/logout'),
   me: () => http.get('/auth/me'),
+  // 改自己的密码：必须验旧密码（令牌 30 天有效，只看令牌就能改等于令牌泄露即可锁死本人）
+  changePassword: (data: { oldPassword: string; newPassword: string }) =>
+    http.post('/auth/password', data),
 
   // ---- 首页成长 Dashboard ----
   dashboard: () => http.get('/dashboard'),

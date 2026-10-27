@@ -169,6 +169,55 @@ public class AuthController {
         return ApiResponse.ok(userOf(rows.get(0)));
     }
 
+    /**
+     * 修改自己的密码。
+     *
+     * 为什么必须验旧密码：令牌是长期有效的（30 天），
+     * 如果只看令牌就能改密码，那么令牌一旦泄露（共用电脑、被拷走 localStorage），
+     * 攻击者可以直接改密码把本人锁在门外。验旧密码能把危害限制在「已登录态可读」。
+     *
+     * 多用户场景下这是刚需：几个人各自持有初始密码，必须能自己换成自己的。
+     */
+    @PostMapping("/password")
+    public ApiResponse<?> changePassword(@RequestBody ChangePasswordRequest req) {
+        Long uid = CurrentUser.id();
+
+        if (req.newPassword() == null || req.newPassword().length() < 8) {
+            return ApiResponse.fail("新密码至少 8 位");
+        }
+        if (req.newPassword().equals(req.oldPassword())) {
+            return ApiResponse.fail("新密码不能和原密码相同");
+        }
+
+        var rows = jdbc.queryForList("select password_hash from my_user where id = ?", uid);
+        if (rows.isEmpty()) {
+            return ApiResponse.fail("用户不存在");
+        }
+        String hash = (String) rows.get(0).get("password_hash");
+        if (hash == null || !encoder.matches(req.oldPassword(), hash)) {
+            return ApiResponse.fail("原密码不正确");
+        }
+
+        jdbc.update("update my_user set password_hash = ?, updated_at = current_timestamp where id = ?",
+                encoder.encode(req.newPassword()), uid);
+
+        // 改完密码撤销其它设备的令牌：这是密码可能泄露时的补救手段。
+        // 当前这台设备的令牌保留，否则用户改完立刻被踢出去，体验很怪。
+        int revoked = tokenService.revokeOthers(uid, bearerFromContext());
+        log.info("用户 {} 修改了密码，已撤销其它设备 {} 个令牌", uid, revoked);
+
+        return ApiResponse.ok(java.util.Map.of("revokedTokens", revoked));
+    }
+
+    /** 从当前请求取令牌（改密码后要用它排除「本机」） */
+    private static String bearerFromContext() {
+        var attrs = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+        if (attrs instanceof org.springframework.web.context.request.ServletRequestAttributes sra) {
+            return bearer(sra.getRequest());
+        }
+        return null;
+    }
+
     private static Map<String, Object> userOf(Map<String, Object> row) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", row.get("id"));
@@ -186,4 +235,6 @@ public class AuthController {
     }
 
     public record LoginRequest(String username, String password, String device) {}
+
+    public record ChangePasswordRequest(String oldPassword, String newPassword) {}
 }

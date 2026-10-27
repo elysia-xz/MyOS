@@ -519,9 +519,66 @@ check("GET /ai/status", status == 200 and ok_envelope(env),
 
 
 # ----------------------------------------------------------------------
-# 12. 登出
+# 12. 修改密码（放在最后：它会改口令，不能影响前面用例）
 # ----------------------------------------------------------------------
-section("[12] 登出")
+section("[12] 修改密码")
+
+NEW_PWD = PASSWORD + "-smoke"
+
+# 未登录不能改
+status, env, text = call("POST", "/auth/password",
+                         {"oldPassword": PASSWORD, "newPassword": NEW_PWD})
+check("未登录改密码返回 401", status == 401, "HTTP %s" % status)
+
+# 旧密码错必须被拒 —— 否则拿到令牌就能锁死本人
+status, env, text = call("POST", "/auth/password",
+                         {"oldPassword": "definitely-wrong", "newPassword": NEW_PWD}, token=TOKEN)
+check("原密码不正确时被拒",
+      status == 200 and not ok_envelope(env) and "原密码" in (env or {}).get("message", ""),
+      text[:120])
+
+# 新密码太短
+status, env, text = call("POST", "/auth/password",
+                         {"oldPassword": PASSWORD, "newPassword": "abc"}, token=TOKEN)
+check("新密码少于 8 位被拒",
+      status == 200 and not ok_envelope(env), text[:120])
+
+# 新旧相同
+status, env, text = call("POST", "/auth/password",
+                         {"oldPassword": PASSWORD, "newPassword": PASSWORD}, token=TOKEN)
+check("新旧密码相同被拒",
+      status == 200 and not ok_envelope(env), text[:120])
+
+# 正常改
+status, env, text = call("POST", "/auth/password",
+                         {"oldPassword": PASSWORD, "newPassword": NEW_PWD}, token=TOKEN)
+changed = status == 200 and ok_envelope(env)
+check("POST /auth/password（正常修改）", changed, text[:160])
+
+if changed:
+    # 旧密码失效
+    status, env2, _ = call("POST", "/auth/login",
+                           {"username": USERNAME, "password": PASSWORD})
+    check("旧密码已失效", status == 200 and not ok_envelope(env2), "登录应失败")
+
+    # 新密码可登录
+    status, env2, _ = call("POST", "/auth/login",
+                           {"username": USERNAME, "password": NEW_PWD})
+    check("新密码可登录", status == 200 and ok_envelope(env2), "登录应成功")
+
+    # 改回去，保持环境可重复跑
+    if status == 200 and ok_envelope(env2):
+        tmp_token = env2["data"]["token"]
+        status, env3, text3 = call("POST", "/auth/password",
+                                   {"oldPassword": NEW_PWD, "newPassword": PASSWORD},
+                                   token=tmp_token)
+        check("密码已还原（保证可重复执行）", status == 200 and ok_envelope(env3), text3[:120])
+
+
+# ----------------------------------------------------------------------
+# 13. 登出
+# ----------------------------------------------------------------------
+section("[13] 登出")
 status, env, text = call("POST", "/auth/logout", token=TOKEN)
 check("POST /auth/logout（撤销当前令牌）", status == 200 and ok_envelope(env), text[:160])
 
