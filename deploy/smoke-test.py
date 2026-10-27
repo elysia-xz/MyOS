@@ -22,6 +22,7 @@ MyOS 后端端到端冒烟测试
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -519,9 +520,87 @@ check("GET /ai/status", status == 200 and ok_envelope(env),
 
 
 # ----------------------------------------------------------------------
-# 12. 修改密码（放在最后：它会改口令，不能影响前面用例）
+# 12. 用户管理（仅管理员）
 # ----------------------------------------------------------------------
-section("[12] 修改密码")
+section("[12] 用户管理（仅管理员）")
+
+status, env, text = call("GET", "/admin/users", token=TOKEN)
+admin_ok = status == 200 and ok_envelope(env)
+check("GET /admin/users（管理员可查）", admin_ok, text[:120])
+
+USERS = (env.get("data") or {}).get("users") or [] if admin_ok else []
+check("用户列表不含口令哈希",
+      all("password_hash" not in u and "passwordHash" not in u for u in USERS),
+      "字段：%s" % (",".join(USERS[0].keys()) if USERS else "-"))
+
+new_username = "smoke" + str(int(time.time()))[-6:]
+status, env, text = call("POST", "/admin/users",
+                         {"username": new_username, "nickname": TAG + " 测试员"}, token=TOKEN)
+created = status == 200 and ok_envelope(env)
+check("POST /admin/users（建号并自动生成密码）", created, text[:200])
+
+new_uid = None
+new_pwd = None
+if created:
+    new_uid = env["data"]["id"]
+    new_pwd = env["data"].get("plainPassword")
+    check("返回一次性明文密码", bool(new_pwd) and len(new_pwd) >= 8,
+          "长度 %d" % (len(new_pwd) if new_pwd else 0))
+
+    # 新用户能登录，且看不到别人的数据（隔离）
+    status, env2, text2 = call("POST", "/auth/login",
+                              {"username": new_username, "password": new_pwd})
+    check("新用户可登录", status == 200 and ok_envelope(env2), text2[:140])
+    if ok_envelope(env2):
+        sub_token = env2["data"]["token"]
+
+        status, env3, _ = call("GET", "/projects", token=sub_token)
+        check("新用户看不到他人项目（隔离）",
+              status == 200 and ok_envelope(env3) and len(env3["data"]) == 0,
+              "项目 %d 条" % (len(env3.get("data") or []) if ok_envelope(env3) else -1))
+
+        # 🔴 越权红线：普通用户绝不能调用管理接口
+        for m, path, body in (("GET", "/admin/users", None),
+                              ("POST", "/admin/users", {"username": "hijack" + new_username})):
+            status, env4, text4 = call(m, path, body, token=sub_token)
+            check("%s %s 普通用户被拒" % (m, path),
+                  status == 200 and not ok_envelope(env4), text4[:120])
+
+        # 停用后：令牌立即失效 + 登录被拒
+        status, env5, text5 = call("PUT", "/admin/users/%s/status" % new_uid,
+                                   token=TOKEN, raw_query="?status=DISABLED")
+        check("停用账号", status == 200 and ok_envelope(env5), text5[:140])
+
+        status, _, _ = call("GET", "/dashboard", token=sub_token)
+        check("停用后旧令牌立即失效（401）", status == 401, "HTTP %s" % status)
+
+        status, env6, text6 = call("POST", "/auth/login",
+                                   {"username": new_username, "password": new_pwd})
+        check("停用后无法登录", status == 200 and not ok_envelope(env6), text6[:120])
+
+    # 不能停用自己
+    me_id = next((u["id"] for u in USERS if u["username"] == USERNAME), None)
+    if me_id:
+        status, env7, text7 = call("PUT", "/admin/users/%s/status" % me_id,
+                                   token=TOKEN, raw_query="?status=DISABLED")
+        check("不能停用自己", status == 200 and not ok_envelope(env7), text7[:120])
+
+    # 用户名重复 / 非法格式
+    status, env8, text8 = call("POST", "/admin/users", {"username": new_username}, token=TOKEN)
+    check("重复用户名被拒", status == 200 and not ok_envelope(env8), text8[:120])
+
+    status, env9, text9 = call("POST", "/admin/users", {"username": TAG + "bad"}, token=TOKEN)
+    check("非法用户名被拒", status == 200 and not ok_envelope(env9), text9[:120])
+
+    # 清理：删掉测试用户（停用接口不删数据，这里只清测试账号）
+    if new_uid:
+        call("DELETE", "/admin/users/%s" % new_uid, token=TOKEN)
+
+
+# ----------------------------------------------------------------------
+# 13. 修改密码（放在最后：它会改口令，不能影响前面用例）
+# ----------------------------------------------------------------------
+section("[13] 修改密码")
 
 NEW_PWD = PASSWORD + "-smoke"
 
@@ -576,9 +655,9 @@ if changed:
 
 
 # ----------------------------------------------------------------------
-# 13. 登出
+# 14. 登出
 # ----------------------------------------------------------------------
-section("[13] 登出")
+section("[14] 登出")
 status, env, text = call("POST", "/auth/logout", token=TOKEN)
 check("POST /auth/logout（撤销当前令牌）", status == 200 and ok_envelope(env), text[:160])
 

@@ -110,5 +110,15 @@ export const api = {
   // ---- 数据导出 ----
   // responseType: 'blob' —— 后端带 Content-Disposition 直接给文件，
   // 走 blob 才能保留「另存为」的原生体验与正确文件名。
-  exportData: () => http.get('/export', { responseType: 'blob' })
+  exportData: () => http.get('/export', { responseType: 'blob' }),
+
+  // ---- 用户管理（仅管理员）----
+  // 后端会对角色做校验，非管理员调用会返回失败 —— 前端隐藏入口只是体验，不是安全边界
+  adminUsers: () => http.get('/admin/users'),
+  adminCreateUser: (data: { username: string; nickname?: string; password?: string }) =>
+    http.post('/admin/users', data),
+  adminSetUserStatus: (id: number, status: 'ACTIVE' | 'DISABLED') =>
+    http.put(`/admin/users/${id}/status`, null, { params: { status } }),
+  // 重置密码总是由后端生成随机密码并回传一次（不让管理员自定义，避免能登进别人账号）
+  adminResetPassword: (id: number) => http.post(`/admin/users/${id}/reset-password`)
 }

@@ -86,8 +86,114 @@ const keyIcon = icon(
     '<path d="M18 5l2 2"/><path d="M15 8l2 2"/>'
 )
 
-/** 改密码弹窗：多用户测试期每个人都要能自己换掉初始密码 */
-const pwdOpen = ref(false)
+const usersIcon = icon(
+  '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>' +
+    '<circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/>'
+)
+
+/**
+ * 用户管理（仅管理员可见）。
+ *
+ * 前端隐藏入口不构成安全边界 —— 真正的权限校验在后端 AdminGuard，
+ * 普通用户即便直接调接口也会被拒。这里隐藏只是不给他看一个点了就报错的按钮。
+ */
+const isAdmin = computed(() => !!auth.user?.admin)
+const userOpen = ref(false)
+const userList = ref<any[]>([])
+const userLoading = ref(false)
+const userError = ref('')
+const newUser = ref({ username: '', nickname: '', password: '' })
+const creating = ref(false)
+/** 建号/重置后拿到的一次性明文密码，要显眼地给管理员看 */
+const issuedPassword = ref<{ username: string; password: string } | null>(null)
+
+async function openUsers() {
+  userOpen.value = true
+  issuedPassword.value = null
+  userError.value = ''
+  newUser.value = { username: '', nickname: '', password: '' }
+  await loadUsers()
+}
+
+async function loadUsers() {
+  userLoading.value = true
+  try {
+    const res: any = await api.adminUsers()
+    userList.value = res.data?.data?.users || []
+  } catch {
+    userError.value = '加载用户列表失败'
+  } finally {
+    userLoading.value = false
+  }
+}
+
+async function createUser() {
+  userError.value = ''
+  const u = newUser.value
+  if (!u.username.trim()) return (userError.value = '请填用户名')
+  creating.value = true
+  try {
+    const res: any = await api.adminCreateUser({
+      username: u.username.trim(),
+      nickname: u.nickname.trim() || undefined,
+      // 留空则后端生成随机密码
+      password: u.password.trim() || undefined
+    })
+    const body = res.data
+    if (body?.success === false) {
+      userError.value = body.message || '创建失败'
+      return
+    }
+    const d = body.data
+    if (d.passwordGenerated && d.plainPassword) {
+      issuedPassword.value = { username: d.username, password: d.plainPassword }
+    }
+    newUser.value = { username: '', nickname: '', password: '' }
+    await loadUsers()
+    if (!d.passwordGenerated) toast(`已创建 ${d.username}`, 'ok')
+  } catch (e: any) {
+    userError.value = e?.response?.data?.message || '创建失败'
+  } finally {
+    creating.value = false
+  }
+}
+
+async function toggleUser(u: any) {
+  const next = u.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE'
+  const verb = next === 'DISABLED' ? '停用' : '启用'
+  if (next === 'DISABLED' && !window.confirm(`确认停用 ${u.username}？停用后该账号立即无法登录。`)) return
+  try {
+    const res: any = await api.adminSetUserStatus(u.id, next)
+    const body = res.data
+    if (body?.success === false) {
+      toast(body.message || '操作失败')
+      return
+    }
+    const revoked = body?.data?.revokedTokens
+    toast(revoked > 0 ? `已${verb}，撤销 ${revoked} 个登录会话` : `已${verb}`, 'ok')
+    await loadUsers()
+  } catch (e: any) {
+    toast(e?.response?.data?.message || '操作失败')
+  }
+}
+
+async function resetUserPassword(u: any) {
+  if (!window.confirm(`确认重置 ${u.username} 的密码？对方当前所有设备会退出登录。`)) return
+  try {
+    const res: any = await api.adminResetPassword(u.id)
+    const body = res.data
+    if (body?.success === false) {
+      toast(body.message || '重置失败')
+      return
+    }
+    issuedPassword.value = { username: u.username, password: body.data.plainPassword }
+    await loadUsers()
+  } catch (e: any) {
+    toast(e?.response?.data?.message || '重置失败')
+  }
+}
+
+/** 改密码弹窗：多用户测试期每个人都要能自己换掉初始密码 */const pwdOpen = ref(false)
 const pwdForm = ref({ oldPassword: '', newPassword: '', confirm: '' })
 const pwdSaving = ref(false)
 const pwdError = ref('')
@@ -179,6 +285,10 @@ onMounted(() => {
           <span class="avatar">{{ userInitial }}</span>
           <span class="user-name">{{ auth.user.nickname || auth.user.username }}</span>
         </div>
+        <button v-if="isAdmin" type="button" class="logout-btn" @click="openUsers">
+          <span class="nav-icon" aria-hidden="true" v-html="usersIcon"></span>
+          <span class="nav-label">用户管理</span>
+        </button>
         <button type="button" class="logout-btn" @click="openPassword">
           <span class="nav-icon" aria-hidden="true" v-html="keyIcon"></span>
           <span class="nav-label">修改密码</span>
@@ -197,6 +307,65 @@ onMounted(() => {
       </div>
       <router-view />
     </main>
+  </div>
+
+  <!-- 用户管理（仅管理员） -->
+  <div v-if="userOpen" class="modal-mask" @click.self="userOpen = false">
+    <div class="modal" style="max-width: 620px">
+      <h2>用户管理</h2>
+      <p class="sub">每个人只能看到自己的数据。停用账号会立即断开对方的所有登录。</p>
+
+      <!-- 一次性密码：建号/重置后只显示这一次，必须显眼 -->
+      <div v-if="issuedPassword" class="pwd-issued">
+        <div class="pwd-issued-title">请立刻复制，只显示一次</div>
+        <div class="pwd-issued-row">
+          <span>{{ issuedPassword.username }}</span>
+          <code>{{ issuedPassword.password }}</code>
+        </div>
+        <div class="pwd-issued-hint">把这个密码转交给对方，让他登录后自己修改。</div>
+      </div>
+
+      <div class="card-title" style="margin-top: 20px">
+        <span>现有用户</span><span class="hint">{{ userList.length }} 人</span>
+      </div>
+      <div v-if="userLoading" class="empty">加载中…</div>
+      <div v-else class="user-table">
+        <div v-for="u in userList" :key="u.id" class="user-row" :class="{ disabled: u.status !== 'ACTIVE' }">
+          <span class="user-row-name">
+            {{ u.nickname || u.username }}
+            <span v-if="u.role === 'ADMIN'" class="tag admin-tag">管理员</span>
+            <span v-if="u.status !== 'ACTIVE'" class="tag off-tag">已停用</span>
+          </span>
+          <span class="user-row-meta">
+            {{ u.username }}
+            <template v-if="u.activeTokens > 0"> · {{ u.activeTokens }} 个设备在线</template>
+          </span>
+          <span class="user-row-actions">
+            <button class="ghost tiny" @click="resetUserPassword(u)">重置密码</button>
+            <button class="ghost tiny" :disabled="u.id === auth.user?.id" @click="toggleUser(u)">
+              {{ u.status === 'ACTIVE' ? '停用' : '启用' }}
+            </button>
+          </span>
+        </div>
+      </div>
+
+      <div class="card-title" style="margin-top: 24px"><span>添加用户</span></div>
+      <div class="form-card" style="margin-top: 10px">
+        <div class="form-row">
+          <input v-model="newUser.username" placeholder="用户名（字母/数字/下划线，3-32 位）" />
+          <input v-model="newUser.nickname" placeholder="昵称（可选）" />
+        </div>
+        <input v-model="newUser.password" placeholder="初始密码（留空则自动生成随机密码）" />
+        <div v-if="userError" class="error">{{ userError }}</div>
+        <button class="primary" :disabled="creating" @click="createUser">
+          {{ creating ? '创建中…' : '创建用户' }}
+        </button>
+      </div>
+
+      <div class="modal-actions">
+        <button class="ghost" @click="userOpen = false">关闭</button>
+      </div>
+    </div>
   </div>
 
   <!-- 修改密码 -->

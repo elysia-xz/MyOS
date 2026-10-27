@@ -66,9 +66,14 @@ public class TokenService {
             return null;
         }
         String hash = sha256(rawToken);
+        // 连表校验账号状态：停用的账号哪怕手里还攥着未过期的令牌也必须失效。
+        // 只在「停用」时删令牌是不够的 —— 那只覆盖走接口的路径，
+        // 直接改库、或撤销语句失败时，旧令牌仍能用到 30 天。
         List<java.util.Map<String, Object>> rows = jdbc.queryForList("""
-                select user_id from user_token
-                where token_hash = ? and expires_at > CURRENT_TIMESTAMP
+                select t.user_id from user_token t
+                join my_user u on u.id = t.user_id
+                where t.token_hash = ? and t.expires_at > CURRENT_TIMESTAMP
+                  and u.status = 'ACTIVE'
                 """, hash);
         if (rows.isEmpty()) {
             return null;

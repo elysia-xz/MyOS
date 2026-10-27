@@ -126,12 +126,21 @@ public class AuthController {
     @PostMapping("/login")
     public ApiResponse<?> login(@RequestBody LoginRequest request) {
         var rows = jdbc.queryForList("""
-                select id, username, password_hash, nickname from my_user where username = ?
+                select id, username, password_hash, nickname, status, role from my_user where username = ?
                 """, request.username());
         if (rows.isEmpty()) {
             return ApiResponse.fail("用户名或密码错误");
         }
         Map<String, Object> user = rows.get(0);
+
+        // ⚠️ status 字段早在建表时就有，但登录从来没检查过 ——
+        // 于是「停用账号」此前等于摆设：停用后照样能登录。
+        // 多用户场景下这是必须的（测试结束要能收回某人的访问权）。
+        Object status = user.get("status");
+        if (status != null && !"ACTIVE".equals(status.toString())) {
+            return ApiResponse.fail("该账号已停用，请联系管理员");
+        }
+
         String hash = (String) user.get("password_hash");
         if (hash == null || !encoder.matches(request.password(), hash)) {
             return ApiResponse.fail("用户名或密码错误");
@@ -162,7 +171,8 @@ public class AuthController {
         if (uid == null) {
             return ApiResponse.fail("未登录");
         }
-        var rows = jdbc.queryForList("select id, username, nickname from my_user where id = ?", uid);
+        var rows = jdbc.queryForList(
+                "select id, username, nickname, role from my_user where id = ?", uid);
         if (rows.isEmpty()) {
             return ApiResponse.fail("用户不存在");
         }
@@ -223,6 +233,11 @@ public class AuthController {
         m.put("id", row.get("id"));
         m.put("username", row.get("username"));
         m.put("nickname", row.get("nickname") == null ? "" : row.get("nickname"));
+        // 角色只用于前端决定是否显示「用户管理」入口，真正的权限校验在后端 AdminGuard。
+        // 前端隐藏入口不是安全边界，只是不让普通用户看到一个点了就报错的按钮。
+        Object role = row.get("role");
+        m.put("role", role == null ? "USER" : role.toString());
+        m.put("admin", "ADMIN".equals(role == null ? null : role.toString()));
         return m;
     }
 
