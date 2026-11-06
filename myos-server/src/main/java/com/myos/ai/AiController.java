@@ -3,6 +3,9 @@ package com.myos.ai;
 import com.myos.common.ApiResponse;
 import com.myos.common.CurrentUser;
 import com.myos.task.TaskSql;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,6 +23,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/ai")
 public class AiController {
+
+    private static final Logger log = LoggerFactory.getLogger(AiController.class);
 
     private final AiGateway gateway;
     private final JdbcTemplate jdbc;
@@ -319,13 +324,48 @@ public class AiController {
     private ApiResponse<?> run(String scene, String prompt) {
         try {
             String text = gateway.complete(scene, prompt);
+
+            // 先落库再返回。PRD §7.3：AI 调用要留痕，否则每次都在重新开始，
+            // 也进不了「月复盘 → 年度成长档案」这条链。
+            // 落库失败不能让已经生成好的正文跟着丢掉 —— 所以只告警，不抛。
+            Long outputId = null;
+            try {
+                outputId = jdbc.queryForObject("""
+                        insert into ai_output(user_id, scene, content)
+                        values (?, ?, ?) returning id
+                        """, Long.class, CurrentUser.id(), scene, text);
+            } catch (DataAccessException e) {
+                log.warn("AI 产出落库失败（本次结果仍会返回）：{}", e.getMessage());
+            }
+
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("scene", scene);
             out.put("content", text);
+            out.put("outputId", outputId);
             return ApiResponse.ok(out);
         } catch (AiUnavailableException e) {
             return ApiResponse.fail(e.getMessage());
         }
+    }
+
+    /**
+     * 场景产出的历史存档。
+     *
+     * <p>时间在 SQL 里就格式化成字符串：前端只做展示，不想再为时区/格式
+     * 写一套格式化逻辑（首页其它区块也是这个约定）。
+     */
+    @GetMapping("/outputs")
+    public ApiResponse<?> outputs(@RequestParam(defaultValue = "6") int limit) {
+        int n = Math.max(1, Math.min(50, limit));
+        return ApiResponse.ok(jdbc.queryForList("""
+                select id, scene, content,
+                       to_char(output_date, 'YYYY-MM-DD') as "outputDate",
+                       to_char(created_at, 'MM-DD HH24:MI') as "createdAt"
+                from ai_output
+                where user_id = ?
+                order by id desc
+                limit ?
+                """, CurrentUser.id(), n));
     }
 
 }

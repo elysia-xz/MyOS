@@ -44,4 +44,8 @@
   <delete id="delete">
     DELETE FROM goal WHERE id = #{id} AND user_id = #{userId}
   </delete>
+
+  <select id="existsForUser" resultType="boolean">
+    SELECT EXISTS(SELECT 1 FROM goal WHERE id = #{id} AND user_id = #{userId})
+  </select>
 </mapper>

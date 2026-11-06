@@ -37,6 +37,25 @@
     RETURNING id
   </select>
 
+  <!-- 项目详情页：这个项目由哪些任务推动（也就是进度条的分子分母） -->
+  <select id="findByProject" resultType="com.myos.task.Task">
+    SELECT id, goal_id, project_id, title, description, priority, status, due_date,
+           completed_at, created_at, updated_at
+    FROM task
+    WHERE user_id = #{userId} AND project_id = #{projectId}
+    ORDER BY CASE WHEN status = 'DONE' THEN 1 ELSE 0 END, id DESC
+  </select>
+
+  <!--
+    改归属项目。projectId 传 null 表示「脱离项目」，
+    因此这里不能用 COALESCE 兜底 —— 那会把 null 当成「不改」。
+  -->
+  <update id="updateProject">
+    UPDATE task
+    SET project_id = #{projectId}, updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{id} AND user_id = #{userId}
+  </update>
+
   <update id="updateStatus">
     UPDATE task
     SET status = #{status},

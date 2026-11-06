@@ -72,7 +72,9 @@ public class ExportController {
             new Table("aiMessages", """
                     select m.* from ai_message m
                     join ai_conversation c on c.id = m.conversation_id
-                    where c.user_id = ? order by m.id""")
+                    where c.user_id = ? order by m.id"""),
+            // 场景产出（日报/复盘/月总结）：属于「积累下来的东西」，必须能带走
+            new Table("aiOutputs", "select * from ai_output where user_id = ? order by id")
     );
 
     @GetMapping

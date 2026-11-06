@@ -24,4 +24,7 @@ public interface GoalMapper {
                      @Param("status") String status);
 
     int delete(@Param("userId") Long userId, @Param("id") Long id);
+
+    /** 归属校验：项目挂目标时必须确认目标是当前用户的 */
+    boolean existsForUser(@Param("userId") Long userId, @Param("id") Long id);
 }

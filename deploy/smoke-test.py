@@ -354,9 +354,116 @@ if proj_ok:
 
 
 # ----------------------------------------------------------------------
-# 7. 目标层级（年 → 月 → 周）
+# 7. 目标 → 项目 → 任务链路（自动进度）
+#
+# 这一段测的是产品命题本身：一次行动产生多个结果。
+# 链路上的任何一环断了（任务挂不上项目、进度不跟着任务走、
+# 目标拉不出项目），首页那块「目标链路」就是装饰品而不是机制。
 # ----------------------------------------------------------------------
-section("[7] 目标层级")
+section("[7] 目标 → 项目 → 任务链路")
+
+status, env, text = call("POST", "/goals", {
+    "title": TAG + " 年度目标", "level": "YEAR",
+}, token=TOKEN)
+goal_ok = status == 200 and ok_envelope(env)
+check("POST /goals（年度目标）", goal_ok, text[:160])
+gid = env["data"]["id"] if goal_ok else None
+
+if goal_ok:
+    status, env, text = call("POST", "/projects", {
+        "name": TAG + " 链路项目", "description": "验证自动进度",
+        "status": "IN_PROGRESS", "progress": 0, "progressMode": "AUTO",
+        "goalId": gid,
+    }, token=TOKEN)
+    link_ok = status == 200 and ok_envelope(env)
+    check("POST /projects（带 goalId）", link_ok, text[:200])
+
+    if link_ok:
+        lpid = env["data"]["id"]
+        check("goalId 正确回存", env["data"].get("goalId") == gid,
+              "实际 %r" % env["data"].get("goalId"))
+
+        # 任务直接挂项目 —— 链路上最短的一步
+        status, env, text = call("POST", "/tasks", {
+            "title": TAG + " 链路任务1", "priority": "MEDIUM",
+            "dueDate": TODAY, "projectId": lpid,
+        }, token=TOKEN)
+        t1_ok = status == 200 and ok_envelope(env)
+        check("POST /tasks（带 projectId）", t1_ok, text[:160])
+        lt1 = env["data"]["id"] if t1_ok else None
+
+        status, env, text = call("POST", "/tasks", {
+            "title": TAG + " 链路任务2", "priority": "MEDIUM",
+            "dueDate": TODAY, "projectId": lpid,
+        }, token=TOKEN)
+        lt2 = env["data"]["id"] if status == 200 and ok_envelope(env) else None
+
+        def refetch():
+            _, e, _ = call("GET", "/projects/%s" % lpid, token=TOKEN)
+            return (e.get("data") or {}).get("project") or {}
+
+        proj = refetch()
+        check("自动进度：0/2 完成 → 0%",
+              proj.get("progress") == 0 and proj.get("taskTotal") == 2,
+              "progress=%r taskTotal=%r" % (proj.get("progress"), proj.get("taskTotal")))
+
+        call("PUT", "/tasks/%s/status" % lt1, token=TOKEN, raw_query="?status=DONE")
+        proj = refetch()
+        check("自动进度：1/2 完成 → 50%",
+              proj.get("progress") == 50 and proj.get("taskDone") == 1,
+              "progress=%r taskDone=%r" % (proj.get("progress"), proj.get("taskDone")))
+
+        # 解绑必须真的把任务移出去：projectId 省略 = 脱离，而不是「不改」
+        call("PUT", "/tasks/%s/project" % lt2, token=TOKEN)
+        proj = refetch()
+        check("解绑任务后自动进度重算（1/1 → 100%）",
+              proj.get("progress") == 100 and proj.get("taskTotal") == 1,
+              "progress=%r taskTotal=%r" % (proj.get("progress"), proj.get("taskTotal")))
+
+        # 手动进度：会顺带把模式切成 MANUAL，否则任务一变数就被自动值盖掉
+        call("PUT", "/projects/%s/progress" % lpid, token=TOKEN, raw_query="?value=30")
+        proj = refetch()
+        check("手动推进后模式变 MANUAL 且值为 30",
+              proj.get("progress") == 30 and proj.get("progressMode") == "MANUAL",
+              "progress=%r mode=%r" % (proj.get("progress"), proj.get("progressMode")))
+
+        call("PUT", "/projects/%s" % lpid, {
+            "name": TAG + " 链路项目", "description": "验证自动进度",
+            "status": "IN_PROGRESS", "progressMode": "AUTO", "goalId": gid,
+        }, token=TOKEN)
+        proj = refetch()
+        check("切回 AUTO 后进度重新由任务决定（100%）",
+              proj.get("progress") == 100 and proj.get("progressMode") == "AUTO",
+              "progress=%r mode=%r" % (proj.get("progress"), proj.get("progressMode")))
+
+        # 首页把「年目标 → 项目」接出来，否则 goal 表等于在空转
+        status, env, text = call("GET", "/dashboard", token=TOKEN)
+        chain = ((env or {}).get("data") or {}).get("goalChain") or []
+        node = next((g for g in chain if g.get("id") == gid), None)
+        check("首页 goalChain 带出该年度目标", node is not None,
+              "共 %d 个目标" % len(chain))
+        check("goalChain 把项目挂在目标下",
+              bool(node) and any(p.get("id") == lpid for p in node.get("projects") or []),
+              str([p.get("id") for p in (node or {}).get("projects") or []]))
+
+        # 不存在的项目 id 必须友好拒绝 —— 否则前端下拉一旦传错就是 500
+        status, env, text = call("PUT", "/tasks/%s/project" % lt1, token=TOKEN,
+                                 raw_query="?projectId=99999999")
+        check("非法 projectId 被拒绝（不是 500）",
+              status == 200 and not ok_envelope(env), text[:160])
+
+        # 清理：任务 → 项目 → 目标（顺序不能反，外键挡着）
+        for tid in (lt1, lt2):
+            if tid:
+                call("DELETE", "/tasks/%s" % tid, token=TOKEN)
+        call("DELETE", "/projects/%s" % lpid, token=TOKEN)
+    call("DELETE", "/goals/%s" % gid, token=TOKEN)
+
+
+# ----------------------------------------------------------------------
+# 8. 目标层级（年 → 月 → 周）
+# ----------------------------------------------------------------------
+section("[8] 目标层级")
 status, env, text = call("GET", "/goals", token=TOKEN)
 check("GET /goals", status == 200 and ok_envelope(env), text[:120])
 
@@ -379,9 +486,9 @@ if goal_ok:
 
 
 # ----------------------------------------------------------------------
-# 8. 财务
+# 9. 财务
 # ----------------------------------------------------------------------
-section("[8] 财务记账与资产")
+section("[9] 财务记账与资产")
 status, env, text = call("GET", "/finance/records", token=TOKEN)
 check("GET /finance/records", status == 200 and ok_envelope(env), text[:120])
 
@@ -411,9 +518,9 @@ check("PUT /finance/assets（快照 upsert）", status == 200 and ok_envelope(en
 
 
 # ----------------------------------------------------------------------
-# 9. 复盘（含 metricsJson）
+# 10. 复盘（含 metricsJson）
 # ----------------------------------------------------------------------
-section("[9] 复盘")
+section("[10] 复盘")
 status, env, text = call("GET", "/review", token=TOKEN, raw_query="?type=DAY&limit=10")
 check("GET /review?type=DAY", status == 200 and ok_envelope(env), text[:120])
 
@@ -454,9 +561,9 @@ else:
 
 
 # ----------------------------------------------------------------------
-# 10. 数据导出
+# 11. 数据导出
 # ----------------------------------------------------------------------
-section("[10] 数据导出")
+section("[11] 数据导出")
 
 # 未登录必须拿不到 —— 导出的是全部个人数据，这里漏了等于把整库公开
 status, env, text = call("GET", "/export")
@@ -475,8 +582,9 @@ if status == 200 and isinstance(env, dict):
           bool(meta.get("exportedAt")) and meta.get("userId") is not None,
           json.dumps({k: meta.get(k) for k in ("exportedAt", "userId")}, ensure_ascii=False))
 
-    check("导出含 14 个数据集合",
-          len(data) == 14, "实际 %d 个：%s" % (len(data), ",".join(sorted(data))))
+    # 15 = 原 14 + aiOutputs（v1.8 让场景产出落库，属于要能带走的资产）
+    check("导出含 15 个数据集合",
+          len(data) == 15, "实际 %d 个：%s" % (len(data), ",".join(sorted(data))))
 
     check("没有取不到的表",
           not meta.get("failedTables"),
@@ -510,19 +618,24 @@ if status == 200 and isinstance(env, dict):
 
 
 # ----------------------------------------------------------------------
-# 11. AI 网关（未配 Key 时应优雅降级，不是崩溃）
+# 12. AI 网关（未配 Key 时应优雅降级，不是崩溃）
 # ----------------------------------------------------------------------
-section("[11] AI 网关")
+section("[12] AI 网关")
 status, env, text = call("GET", "/ai/status", token=TOKEN)
 check("GET /ai/status", status == 200 and ok_envelope(env),
       "available=%s（未配 Key 时为 false 属正常）"
       % (env["data"].get("available") if ok_envelope(env) else "?"))
 
+# 场景产出存档：没有 Key 也能读（空列表），关键是这个接口在、且按用户隔离。
+# 生成侧要真调模型，属于 test-ai-chat.py 的范围，不进冒烟（耗 token）。
+status, env, text = call("GET", "/ai/outputs", token=TOKEN)
+check("GET /ai/outputs（产出存档可读）", status == 200 and ok_envelope(env), text[:160])
+
 
 # ----------------------------------------------------------------------
-# 12. 用户管理（仅管理员）
+# 13. 用户管理（仅管理员）
 # ----------------------------------------------------------------------
-section("[12] 用户管理（仅管理员）")
+section("[13] 用户管理（仅管理员）")
 
 status, env, text = call("GET", "/admin/users", token=TOKEN)
 admin_ok = status == 200 and ok_envelope(env)
@@ -598,9 +711,9 @@ if created:
 
 
 # ----------------------------------------------------------------------
-# 13. 修改密码（放在最后：它会改口令，不能影响前面用例）
+# 14. 修改密码（放在最后：它会改口令，不能影响前面用例）
 # ----------------------------------------------------------------------
-section("[13] 修改密码")
+section("[14] 修改密码")
 
 NEW_PWD = PASSWORD + "-smoke"
 
@@ -655,9 +768,9 @@ if changed:
 
 
 # ----------------------------------------------------------------------
-# 14. 登出
+# 15. 登出
 # ----------------------------------------------------------------------
-section("[14] 登出")
+section("[15] 登出")
 status, env, text = call("POST", "/auth/logout", token=TOKEN)
 check("POST /auth/logout（撤销当前令牌）", status == 200 and ok_envelope(env), text[:160])
 

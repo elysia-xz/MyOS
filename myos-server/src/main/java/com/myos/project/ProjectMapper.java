@@ -21,6 +21,9 @@ public interface ProjectMapper {
 
     int delete(@Param("userId") Long userId, @Param("id") Long id);
 
+    /** 归属校验：写接口必须先确认这个 project 是当前用户的，不能靠前端给的 id */
+    boolean existsForUser(@Param("userId") Long userId, @Param("id") Long id);
+
     // ---- 开发日志 ----
 
     List<ProjectLog> findLogs(@Param("userId") Long userId, @Param("projectId") Long projectId);

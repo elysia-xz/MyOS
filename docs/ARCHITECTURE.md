@@ -27,17 +27,33 @@ PostgreSQL 18
 ```text
 User
  ├── Goal（YEAR → MONTH → WEEK 自关联）
+ │    └── Project.goal_id          ← v1.8：年目标 → 项目
  ├── HabitLog        （按天 × 7 系统的唯一打点）
- ├── Task → Project
+ ├── Task → Project                ← task.project_id：项目进度由此推导
  ├── Project → ProjectLog
  ├── LearningRecord  （五段式：source/content/understanding/practice/conclusion）
- ├── ContentRecord   （DRAFT → PUBLISHED）
+ ├── ContentRecord   （DRAFT → PUBLISHED，可归属 Project）
  ├── FinanceRecord   （INCOME / EXPENSE）
  ├── AssetSnapshot   （按月唯一）
+ ├── AiOutput        （AI 场景产出存档，v1.8）
  └── Review          （DAY / WEEK / MONTH / YEAR）
 ```
 
 ## 关键设计约定
+
+### 0. 链路优先于功能
+「一次行动产生多个结果」不是文案，是可执行的链路：
+
+```text
+年目标 → 项目 → 任务（完成一个任务，项目进度自己前进）
+              → 输出（写完的文章挂在项目下）
+              → 开发日志
+```
+
+- 任务、项目、输出三者通过外键连起来；首页据此渲染「目标链路」卡
+- 项目进度 `progressMode`：`AUTO`（默认，= 已完成任务/总任务）/ `MANUAL`（手填）
+- 手填进度会把模式切成 MANUAL，想交还给自动要在项目编辑里改回 AUTO
+- 没有挂任务的历史项目，AUTO 回退到库里存的值，避免进度条突然跳成 0
 
 ### 1. 双维度
 - **7 大系统**（AI/TECH/CONTENT/ENGLISH/BODY/FINANCE/SOCIAL）→ 首页水位
@@ -61,10 +77,14 @@ com.myos.<domain>
 
 ### 4. 数据库脚本执行顺序
 ```text
-schema.sql     基础表（V0.1 已存在）
-schema-v1.sql  V1 增量（幂等，可重复执行）
-seed-v1.sql    演示数据（幂等）
+schema.sql         基础表
+schema-v1.sql      V1 增量
+schema-v1.1 ~ v1.8 逐版增量（令牌 / 语录 / 外键 / 配置 / AI 对话 / 输出归属 / 角色 / 链路）
+seed.sql           基础演示数据
+seed-v1.sql        V1 演示数据
 ```
+全部幂等，统一由 `deploy/init-db.sh` 按序执行（当前 12 步）。
+新增脚本时**必须同步** `init-db.sh` 与 `docker-compose.yml` 的挂载编号。
 
 ## 安全
 

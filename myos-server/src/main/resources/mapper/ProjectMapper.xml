@@ -2,46 +2,111 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.myos.project.ProjectMapper">
 
-  <sql id="cols">
-    id, name, description, status, progress, start_date, target_date,
-    github_url, demo_url, problem_solved, tech_stack, cover_image,
-    difficulty, solution, finished_at
+  <!--
+    ⚠️ 列的顺序必须与 Project.java 的 record 组件顺序**逐位一致**。
+
+    MyBatis 对单构造器类型（record 就是）用的是「按列序对构造参数做位置映射」，
+    不是按列名 —— 所以一旦在 record 中间插入字段、而 SELECT 没在同一个位置插入
+    对应的列，就会把 'AUTO' 读进一个 int 字段，报出
+    「不良的类型值 int : AUTO」这种看起来莫名其妙、实际却完全合理的错误。
+    本次就踩了一次。加字段时两边一起改，并保持顺序。
+
+    progress 不取自 p.progress，而是按 progress_mode 推导（见 derived）。
+  -->
+  <sql id="columns">
+    p.id,
+    p.name,
+    p.description,
+    p.status,
+    <!-- progress -->
+    CASE
+      WHEN p.progress_mode = 'MANUAL' THEN p.progress
+      WHEN COALESCE(t.total, 0) &gt; 0
+        THEN LEAST(100, ROUND(100.0 * t.done / t.total))::int
+      ELSE p.progress
+    END AS progress,
+    p.progress_mode,
+    p.goal_id,
+    COALESCE(t.total, 0) AS task_total,
+    COALESCE(t.done, 0) AS task_done,
+    p.start_date,
+    p.target_date,
+    p.github_url,
+    p.demo_url,
+    p.problem_solved,
+    p.tech_stack,
+    p.cover_image,
+    p.difficulty,
+    p.solution,
+    p.finished_at
+  </sql>
+
+  <!--
+    项目进度的唯一口径。
+
+    AUTO   ：有任务时 = 已完成任务 / 总任务；没挂任务时回退到库里存的值
+             （历史项目都没有任务，回退保证它们的进度条不会突然跳成 0）
+    MANUAL ：直接用库里存的值
+
+    写在 SQL 里而不是在 Java 里算，是为了让「列表 / 详情 / 作品集」自动吃同一份口径。
+    注意 DashboardController 里也有同样一段（首页走 jdbc 聚合），改这里要同步那边。
+  -->
+  <sql id="taskAgg">
+    LEFT JOIN LATERAL (
+      SELECT count(*) AS total,
+             count(*) FILTER (WHERE status = 'DONE') AS done
+      FROM task
+      WHERE task.project_id = p.id AND task.user_id = p.user_id
+    ) t ON true
   </sql>
 
   <select id="findByUserId" resultType="com.myos.project.Project">
-    SELECT <include refid="cols"/>
-    FROM project
-    WHERE user_id = #{userId}
+    SELECT <include refid="columns"/>
+    FROM project p
+    <include refid="taskAgg"/>
+    WHERE p.user_id = #{userId}
     ORDER BY
-      CASE status WHEN 'IN_PROGRESS' THEN 1 WHEN 'PLANNED' THEN 2 ELSE 3 END,
-      id DESC
+      CASE p.status WHEN 'IN_PROGRESS' THEN 1 WHEN 'PLANNED' THEN 2 ELSE 3 END,
+      p.id DESC
   </select>
 
   <select id="findById" resultType="com.myos.project.Project">
-    SELECT <include refid="cols"/>
-    FROM project
-    WHERE id = #{id} AND user_id = #{userId}
+    SELECT <include refid="columns"/>
+    FROM project p
+    <include refid="taskAgg"/>
+    WHERE p.id = #{id} AND p.user_id = #{userId}
   </select>
 
   <!-- 同 ContentMapper：Project 是 record（不可变），用 RETURNING 取主键 -->
   <select id="insert" resultType="long" flushCache="true">
-    INSERT INTO project(user_id, name, description, status, progress, start_date, target_date,
-                        github_url, demo_url, problem_solved, tech_stack, cover_image,
-                        difficulty, solution, finished_at)
+    INSERT INTO project(user_id, name, description, status, progress, progress_mode, goal_id,
+                        start_date, target_date, github_url, demo_url, problem_solved,
+                        tech_stack, cover_image, difficulty, solution, finished_at)
     VALUES (#{userId}, #{project.name}, #{project.description},
             COALESCE(#{project.status}, 'PLANNED'), COALESCE(#{project.progress}, 0),
+            COALESCE(#{project.progressMode}, 'AUTO'), #{project.goalId},
             #{project.startDate}, #{project.targetDate}, #{project.githubUrl}, #{project.demoUrl},
             #{project.problemSolved}, #{project.techStack}, #{project.coverImage},
             #{project.difficulty}, #{project.solution}, #{project.finishedAt})
     RETURNING id
   </select>
 
+  <!--
+    AUTO 模式下不写 progress：否则用户在编辑框里看到的「自动值」会被
+    原样存回库，下次任务一增减就对不上了。切到 MANUAL 时才落库。
+  -->
   <update id="update">
     UPDATE project SET
       name = #{project.name},
       description = #{project.description},
       status = #{project.status},
-      progress = #{project.progress},
+      progress = CASE
+                   WHEN COALESCE(#{project.progressMode}, progress_mode) = 'MANUAL'
+                     THEN COALESCE(#{project.progress}, progress)
+                   ELSE progress
+                 END,
+      progress_mode = COALESCE(#{project.progressMode}, progress_mode),
+      goal_id = #{project.goalId},
       start_date = #{project.startDate},
       target_date = #{project.targetDate},
       github_url = #{project.githubUrl},
@@ -56,14 +121,22 @@
     WHERE id = #{project.id} AND user_id = #{userId}
   </update>
 
+  <!--
+    手动推进进度 = 明确表达「我要自己定这个数」，因此顺带把模式切成 MANUAL。
+    否则拖完进度条，任务一变化数就被自动值覆盖，用户会以为按钮坏了。
+  -->
   <update id="updateProgress">
-    UPDATE project SET progress = #{progress}, updated_at = CURRENT_TIMESTAMP
+    UPDATE project SET progress = #{progress}, progress_mode = 'MANUAL', updated_at = CURRENT_TIMESTAMP
     WHERE id = #{id} AND user_id = #{userId}
   </update>
 
   <delete id="delete">
     DELETE FROM project WHERE id = #{id} AND user_id = #{userId}
   </delete>
+
+  <select id="existsForUser" resultType="boolean">
+    SELECT EXISTS(SELECT 1 FROM project WHERE id = #{id} AND user_id = #{userId})
+  </select>
 
   <select id="findLogs" resultType="com.myos.project.ProjectLog">
     SELECT id, project_id, log_date, content, commit_ref

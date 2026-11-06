@@ -20,6 +20,11 @@ export const api = {
   createTask: (data: any) => http.post('/tasks', data),
   updateTaskStatus: (id: number, status: string) =>
     http.put(`/tasks/${id}/status`, null, { params: { status } }),
+  // 改归属项目。projectId 传 null = 脱离项目（不是「不改」），所以参数要显式省略。
+  updateTaskProject: (id: number, projectId: number | null) =>
+    http.put(`/tasks/${id}/project`, null, {
+      params: projectId == null ? {} : { projectId }
+    }),
   deleteTask: (id: number) => http.delete(`/tasks/${id}`),
 
   // ---- 今日习惯打点（7 系统水位）----
@@ -106,6 +111,8 @@ export const api = {
     http.post('/ai/tool/cancel', data),
   aiConversations: () => http.get('/ai/conversations'),
   aiConversation: (id: number) => http.get(`/ai/conversations/${id}`),
+  // 场景产出现在会落库（此前生成完就丢），这里回看历史
+  aiOutputs: (limit = 8) => http.get('/ai/outputs', { params: { limit } }),
 
   // ---- 数据导出 ----
   // responseType: 'blob' —— 后端带 Content-Disposition 直接给文件，

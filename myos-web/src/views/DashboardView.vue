@@ -14,6 +14,7 @@ import AiActionPanel from '../components/AiActionPanel.vue'
 import ProgressRing from '../components/ProgressRing.vue'
 import SystemDots from '../components/SystemDots.vue'
 import FlowGuide from '../components/FlowGuide.vue'
+import GoalChain from '../components/GoalChain.vue'
 
 const router = useRouter()
 const { push: toast } = useToast()
@@ -24,6 +25,7 @@ const data = ref<any>({
   currentProjects: [],
   monthlyTargets: [],
   recentKnowledge: [],
+  goalChain: [],
   todayTasks: { total: 0, done: 0 }
 })
 const loading = ref(true)
@@ -262,6 +264,13 @@ function fmtDate(s: any) {
   return String(s).slice(5, 10)
 }
 
+/** 进度来源，与项目页保持同一套说法 —— 首页和项目页对不上比不显示更糟 */
+function projHint(p: any) {
+  if (p.progressMode === 'MANUAL') return '手动进度'
+  if (!p.taskTotal) return '还没有任务'
+  return `自动 · ${p.taskDone}/${p.taskTotal} 个任务`
+}
+
 /**
  * silent = true 时不进入 loading 态。
  * AI 生成完的刷新必须走静默：否则内容区会被卸载重建，
@@ -320,6 +329,29 @@ async function exportData() {
 /** AI 生成完成后刷新数据并给出反馈 */function onAiRefresh() {
   toast('AI 已生成内容', 'ok')
   load(true)
+}
+
+/**
+ * 新建年度目标。
+ * 只建「年目标」这一层 —— 月/周由它自己往下拆，V1 不把层级表单塞进首页。
+ */
+async function createGoal(title: string) {
+  try {
+    const res: any = await api.createGoal({
+      title,
+      level: 'YEAR',
+      startDate: new Date().getFullYear() + '-01-01',
+      endDate: new Date().getFullYear() + '-12-31'
+    })
+    if (res.data?.success === false) {
+      toast(res.data.message || '创建失败')
+      return
+    }
+    toast('已创建年度目标，去「项目」把项目挂上去', 'ok')
+    load(true)
+  } catch (e: any) {
+    toast(e?.response?.data?.message || '创建失败')
+  }
 }
 
 onMounted(load)
@@ -421,7 +453,16 @@ onMounted(load)
         <span>正在攒什么</span>
       </div>
 
-      <div class="grid-2">
+      <!-- 「年目标 → 月项目」这一跳此前只有后端、没有界面，goal 表等于在空转 -->
+      <div class="card">
+        <div class="card-title">
+          <span>目标链路</span>
+          <span class="hint">年目标 → 项目 → 任务</span>
+        </div>
+        <GoalChain :goals="data.goalChain || []" @create="createGoal" />
+      </div>
+
+      <div class="grid-2 section-gap">
         <div class="card">
           <div class="card-title">
             <span>能力雷达</span>
@@ -460,7 +501,7 @@ onMounted(load)
             </div>
             <p class="proj-desc">{{ p.description || '暂无描述' }}</p>
             <div class="progress"><span :style="{ width: p.progress + '%' }"></span></div>
-            <div class="pct"><span>{{ p.progress }}%</span><span>{{ p.techStack || '' }}</span></div>
+            <div class="pct"><span>{{ p.progress }}%</span><span>{{ projHint(p) }}</span></div>
 
             <!-- 项目状态机：未开始 → 进行中 → 待复盘 → 已完成 -->
             <div class="stage-track" aria-label="项目状态流转">

@@ -236,7 +236,8 @@ public class UserAdminController {
                      + (select count(*) from daily_log      where user_id = ?)
                      + (select count(*) from knowledge_item where user_id = ?)
                      + (select count(*) from project_log    where user_id = ?)
-                """, Integer.class, id, id, id, id, id, id, id, id, id, id, id, id);
+                     + (select count(*) from ai_output      where user_id = ?)
+                """, Integer.class, id, id, id, id, id, id, id, id, id, id, id, id, id);
 
         int n = rows == null ? 0 : rows;
         if (n > 0) {

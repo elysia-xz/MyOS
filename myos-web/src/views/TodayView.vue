@@ -7,8 +7,11 @@ const { push: toast } = useToast()
 
 const tasks = ref<any[]>([])
 const habits = ref<any[]>([])
+const projects = ref<any[]>([])
 const title = ref('')
 const priority = ref('MEDIUM')
+/** 新任务默认归属的项目。null = 不归属（随手记的杂事不该被迫挂项目） */
+const projectId = ref<number | null>(null)
 const saving = ref(false)
 
 const today = new Date().toISOString().slice(0, 10)
@@ -33,8 +36,9 @@ function overdueDays(task: any) {
 }
 
 async function load() {
-  const [t, h] = await Promise.all([api.tasks(), api.habits()])
+  const [t, h, p] = await Promise.all([api.tasks(), api.habits(), api.projects()])
   tasks.value = t.data.data
+  projects.value = p.data.data
   habits.value = h.data.data.map((r: any) => ({
     ...r,
     done: !!(r.done || (r.targetValue > 0 && r.metricValue >= r.targetValue))
@@ -43,10 +47,32 @@ async function load() {
 
 async function add() {
   if (!title.value.trim()) return
-  await api.createTask({ title: title.value, priority: priority.value, dueDate: today })
+  await api.createTask({
+    title: title.value,
+    priority: priority.value,
+    dueDate: today,
+    // 带上归属项目 —— 项目进度就是从这里来的
+    projectId: projectId.value
+  })
   title.value = ''
   await load()
   toast('已添加今日任务', 'ok')
+}
+
+/**
+ * 改归属项目。
+ *
+ * 这一步是「一次行动产生多个结果」里最短的一环：任务挂上项目后，
+ * 项目进度会自己往前走，不用再去项目页手动拖进度条。
+ * 所以操作完要把结果说清楚，否则用户不知道刚才那一下改变了什么。
+ */
+async function bindProject(task: any, value: string) {
+  const pid = value ? Number(value) : null
+  if (pid === (task.projectId ?? null)) return
+  await api.updateTaskProject(task.id, pid)
+  await load()
+  const name = projects.value.find((p) => p.id === pid)?.name
+  toast(pid ? `已归属「${name}」，项目进度会随任务自动前进` : '已脱离项目', 'ok')
 }
 
 async function toggle(task: any) {
@@ -138,15 +164,24 @@ onMounted(load)
 
       <!-- 今日任务 -->
       <div class="card">
-        <div class="card-title"><span>今日任务</span></div>
+        <div class="card-title">
+          <span>今日任务</span>
+          <span class="hint">归属项目的任务会推动项目进度</span>
+        </div>
         <div class="form-row" style="margin-bottom: 8px">
           <input v-model="title" placeholder="添加一个今天要完成的任务…" @keyup.enter="add" />
-          <select v-model="priority" style="flex: 0 0 84px">
-            <option value="HIGH">高</option>
-            <option value="MEDIUM">中</option>
-            <option value="LOW">低</option>
-          </select>
           <button class="primary small" style="flex: 0 0 auto" @click="add">添加</button>
+        </div>
+        <div class="form-row" style="margin-bottom: 12px; gap: 8px">
+          <select v-model="priority" style="flex: 0 0 96px">
+            <option value="HIGH">高优先级</option>
+            <option value="MEDIUM">中优先级</option>
+            <option value="LOW">低优先级</option>
+          </select>
+          <select v-model="projectId" style="flex: 1 1 auto">
+            <option :value="null">不归属项目</option>
+            <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
         </div>
         <div v-if="!tasks.length" class="empty">今天还没有任务。</div>
         <div v-for="task in tasks" :key="task.id" class="list-row" :class="{ overdue: isOverdue(task) }">
@@ -159,6 +194,17 @@ onMounted(load)
               {{ task.priority }} · {{ task.dueDate || '无截止日期' }} <span v-if="isOverdue(task)" class="overdue-tag">逾期 {{ overdueDays(task) }} 天</span>
             </small>
           </div>
+          <!-- 就地改归属项目：不跳页、不弹窗，用户看到一个任务时最可能想改的就是它 -->
+          <select
+            class="bind-select"
+            :class="{ bound: !!task.projectId }"
+            :value="task.projectId ?? ''"
+            :title="task.projectId ? '归属项目' : '未归属任何项目'"
+            @change="bindProject(task, ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">未归属</option>
+            <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
         </div>
       </div>
     </div>
@@ -191,5 +237,32 @@ onMounted(load)
   font-size: 10.5px;
   font-weight: 700;
   vertical-align: 1px;
+}
+
+/*
+ * 任务行末尾的「归属项目」选择器。
+ * 未归属时压到最弱（无边框、灰底），避免一堆「未归属」抢注意力；
+ * 已归属才用主色淡底，让「这个任务是项目的一部分」一眼可见。
+ */
+.bind-select {
+  flex: 0 0 auto;
+  max-width: 130px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  border-radius: 99px;
+  border-color: transparent;
+  background: var(--line2);
+  color: var(--faint);
+  cursor: pointer;
+}
+
+.bind-select:hover {
+  border-color: var(--line);
+}
+
+.bind-select.bound {
+  background: var(--primary-bg);
+  color: var(--primary-ink);
+  font-weight: 600;
 }
 </style>

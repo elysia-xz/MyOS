@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { onMounted, ref, computed } from 'vue'
 import { api } from '../api'
+import { useToast } from '../composables/useToast'
 import { PROJECT_STAGES, withStage } from '../utils/projectStage'
+
+const { push: toast } = useToast()
 
 const projects = ref<any[]>([])
 const portfolio = ref<any[]>([])
+const goals = ref<any[]>([])
 const view = ref<'list' | 'portfolio'>('list')
 const detail = ref<any>(null)
 const showForm = ref(false)
 const logText = ref('')
+const taskText = ref('')
 
 const blank = () => ({
   id: null as number | null,
@@ -16,6 +21,9 @@ const blank = () => ({
   description: '',
   status: 'PLANNED',
   progress: 0,
+  // AUTO：进度由任务完成度推导；MANUAL：用下面这个手填值
+  progressMode: 'AUTO',
+  goalId: null as number | null,
   techStack: '',
   githubUrl: '',
   demoUrl: '',
@@ -31,10 +39,19 @@ const doneCount = computed(() => projects.value.filter((p) => p.status === 'DONE
 /** 列表带上状态机字段：未开始 / 进行中 / 待复盘 / 已完成 */
 const projectCards = computed(() => projects.value.map(withStage))
 
+/** 只有顶层目标（年目标）值得挂项目，子目标挂上去会让链路变成一团 */
+const yearGoals = computed(() =>
+  goals.value.filter((g) => !g.parentId && g.status === 'ACTIVE')
+)
+
+/** 是否自动进度：详情里用来决定显示「自动」还是「手动」 */
+const detailAuto = computed(() => (detail.value?.project?.progressMode || 'AUTO') === 'AUTO')
+
 async function load() {
-  const [p, pf] = await Promise.all([api.projects(), api.portfolio()])
+  const [p, pf, g] = await Promise.all([api.projects(), api.portfolio(), api.goals()])
   projects.value = p.data.data
   portfolio.value = pf.data.data
+  goals.value = g.data.data
 }
 
 function openCreate() {
@@ -49,7 +66,10 @@ function openEdit(p: any) {
 
 async function submit() {
   if (!form.value.name.trim()) return
-  const payload = { ...form.value, finishedAt: form.value.status === 'DONE' ? new Date().toISOString().slice(0, 10) : null }
+  const payload = {
+    ...form.value,
+    finishedAt: form.value.status === 'DONE' ? new Date().toISOString().slice(0, 10) : null
+  }
   if (form.value.id) await api.updateProject(form.value.id, payload)
   else await api.createProject(payload)
   showForm.value = false
@@ -61,11 +81,62 @@ async function openDetail(p: any) {
   detail.value = res.data.data
 }
 
+/** 详情里做完任何写入后按 id 重取 —— 进度条要跟着立刻动，那才是这套机制的说服力 */
+async function refreshDetail() {
+  if (!detail.value) return
+  const res = await api.projectDetail(detail.value.project.id)
+  detail.value = res.data.data
+}
+
 async function addLog() {
   if (!logText.value.trim() || !detail.value) return
   await api.addProjectLog(detail.value.project.id, { content: logText.value })
   logText.value = ''
-  await openDetail(detail.value.project)
+  await refreshDetail()
+}
+
+/** 在项目里直接加任务 —— 让「推进项目」和「干活」是同一个动作 */
+async function addTask() {
+  if (!taskText.value.trim() || !detail.value) return
+  await api.createTask({
+    title: taskText.value.trim(),
+    dueDate: new Date().toISOString().slice(0, 10),
+    projectId: detail.value.project.id
+  })
+  taskText.value = ''
+  await refreshDetail()
+  await load()
+  toast('已加入项目，进度已更新', 'ok')
+}
+
+async function toggleTask(t: any) {
+  await api.updateTaskStatus(t.id, t.status === 'DONE' ? 'TODO' : 'DONE')
+  await refreshDetail()
+  await load()
+}
+
+/** 交还给「按任务自动算」 */
+async function toAuto(p: any) {
+  await api.updateProject(p.id, {
+    name: p.name,
+    description: p.description,
+    status: p.status,
+    progress: p.progress,
+    progressMode: 'AUTO',
+    goalId: p.goalId,
+    startDate: p.startDate,
+    targetDate: p.targetDate,
+    githubUrl: p.githubUrl,
+    demoUrl: p.demoUrl,
+    problemSolved: p.problemSolved,
+    techStack: p.techStack,
+    coverImage: p.coverImage,
+    difficulty: p.difficulty,
+    solution: p.solution,
+    finishedAt: p.finishedAt
+  })
+  await load()
+  toast('已改回按任务自动计算', 'ok')
 }
 
 async function del(id: number) {
@@ -73,10 +144,16 @@ async function del(id: number) {
   await load()
 }
 
-async function bump(p: any) {
-  const next = Math.min(100, (p.progress || 0) + 10)
-  await api.updateProjectProgress(p.id, next)
-  await load()
+function goalName(id: number | null) {
+  if (!id) return ''
+  return goals.value.find((g) => g.id === id)?.title || ''
+}
+
+/** 进度来源的一句话说明 —— 让「这个数字是谁算的」始终可见 */
+function progressHint(p: any) {
+  if (p.progressMode === 'MANUAL') return '手动填写'
+  if (!p.taskTotal) return '自动 · 还没有任务'
+  return `自动 · ${p.taskDone}/${p.taskTotal} 个任务`
 }
 
 onMounted(load)
@@ -107,7 +184,11 @@ onMounted(load)
           <h3 class="proj-name" style="margin-top: 12px">{{ p.name }}</h3>
           <p class="proj-desc">{{ p.description || '暂无描述' }}</p>
           <div class="progress"><span :style="{ width: p.progress + '%' }"></span></div>
-          <small style="color: var(--faint); font-size: 11.5px">{{ p.techStack || '未填写技术栈' }}</small>
+          <div class="proj-meta">
+            <span>{{ progressHint(p) }}</span>
+            <span v-if="goalName(p.goalId)" class="proj-goal">↳ {{ goalName(p.goalId) }}</span>
+            <span v-else>{{ p.techStack || '未填写技术栈' }}</span>
+          </div>
 
           <!-- 项目状态机：未开始 → 进行中 → 待复盘 → 已完成 -->
           <div class="stage-track" style="margin-top: 12px" aria-label="项目状态流转">
@@ -123,7 +204,8 @@ onMounted(load)
           <div class="form-row" style="margin-top: 14px; gap: 6px">
             <button class="ghost tiny" @click="openDetail(p)">详情</button>
             <button class="ghost tiny" @click="openEdit(p)">编辑</button>
-            <button v-if="p.status !== 'DONE'" class="ghost tiny" @click="bump(p)">+10%</button>
+            <!-- 「+10%」已删除：手拖进度条是这条链路上最假的一环，现在改由任务推动 -->
+            <button v-if="p.progressMode === 'MANUAL'" class="ghost tiny" @click="toAuto(p)">改回自动</button>
             <button class="ghost tiny" @click="del(p.id)">删除</button>
           </div>
         </div>
@@ -167,8 +249,33 @@ onMounted(load)
                 <option value="DONE">已完成</option>
               </select>
             </label>
-            <label class="field" style="flex: 1"><span>进度 %</span><input v-model.number="form.progress" type="number" min="0" max="100" /></label>
           </div>
+          <div class="form-row">
+            <label class="field" style="flex: 1"><span>归属目标</span>
+              <select v-model="form.goalId">
+                <option :value="null">不归属目标</option>
+                <option v-for="g in yearGoals" :key="g.id" :value="g.id">{{ g.title }}</option>
+              </select>
+            </label>
+            <label class="field" style="flex: 0 0 132px"><span>进度来源</span>
+              <select v-model="form.progressMode">
+                <option value="AUTO">按任务自动</option>
+                <option value="MANUAL">手动填写</option>
+              </select>
+            </label>
+            <label class="field" style="flex: 0 0 96px"><span>进度 %</span>
+              <input
+                v-model.number="form.progress"
+                type="number"
+                min="0"
+                max="100"
+                :disabled="form.progressMode === 'AUTO'"
+              />
+            </label>
+          </div>
+          <p class="form-hint">
+            按任务自动时，进度 = 该项目下已完成任务 / 总任务。想让进度条一直是「真的」，就保持自动。
+          </p>
           <label class="field"><span>项目简介</span><input v-model="form.description" /></label>
           <label class="field"><span>解决的问题</span><textarea v-model="form.problemSolved"></textarea></label>
           <div class="form-row">
@@ -194,6 +301,10 @@ onMounted(load)
       <div class="modal">
         <h2>{{ detail.project.name }}</h2>
         <p class="sub">{{ detail.project.description }}</p>
+        <div class="detail-progress">
+          <div class="progress"><span :style="{ width: detail.project.progress + '%' }"></span></div>
+          <small>{{ detail.project.progress }}% · {{ progressHint(detail.project) }}</small>
+        </div>
         <div class="grid-2" style="gap: 14px">
           <div><div class="hint" style="font-size: 11.5px; color: var(--faint)">解决的问题</div><p style="font-size: 13px; margin: 4px 0 0">{{ detail.project.problemSolved || '—' }}</p></div>
           <div><div class="hint" style="font-size: 11.5px; color: var(--faint)">技术栈</div><p style="font-size: 13px; margin: 4px 0 0">{{ detail.project.techStack || '—' }}</p></div>
@@ -207,6 +318,24 @@ onMounted(load)
           <span class="dot"></span>
           <span class="txt">{{ c.title }}</span>
           <span class="tag" :class="c.status === 'PUBLISHED' ? 'ok' : ''">{{ c.status === 'PUBLISHED' ? '已发布' : '草稿' }}</span>
+        </div>
+
+        <!-- 推动这个项目的任务：进度条的分子分母，就地可勾 -->
+        <div class="card-title" style="margin-top: 24px">
+          <span>推动这个项目的任务</span>
+          <span class="hint">{{ detail.tasks?.filter((t: any) => t.status === 'DONE').length || 0 }} / {{ detail.tasks?.length || 0 }} 完成</span>
+        </div>
+        <div class="form-row" style="margin-bottom: 10px">
+          <input v-model="taskText" placeholder="为这个项目加一个任务…" @keyup.enter="addTask" />
+          <button class="primary small" style="flex: 0 0 auto" @click="addTask">添加</button>
+        </div>
+        <div v-if="!detail.tasks?.length" class="empty">还没有任务。加上任务后，这个项目的进度会自己往前走。</div>
+        <div v-for="t in detail.tasks" :key="t.id" class="sink-item task-sink">
+          <button class="circle" :class="{ done: t.status === 'DONE' }" @click="toggleTask(t)">
+            {{ t.status === 'DONE' ? '✓' : '' }}
+          </button>
+          <span class="txt" :class="{ strike: t.status === 'DONE' }">{{ t.title }}</span>
+          <span class="meta">{{ t.dueDate || '' }}</span>
         </div>
 
         <div class="card-title" style="margin-top: 24px"><span>开发日志</span></div>
@@ -228,3 +357,57 @@ onMounted(load)
     </div>
   </section>
 </template>
+
+<style scoped>
+/*
+ * 进度来源说明：一行小字，把「这个数字是谁算的」始终讲清楚。
+ * 自动进度最怕的就是用户不知道它是自动的，然后以为进度条坏了。
+ */
+.proj-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--faint);
+  min-width: 0;
+}
+
+.proj-meta > span:first-child {
+  white-space: nowrap;
+}
+
+.proj-goal {
+  color: var(--primary-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.form-hint {
+  margin: -2px 0 14px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--faint);
+}
+
+.detail-progress {
+  margin: 14px 0 4px;
+}
+
+.detail-progress small {
+  display: block;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.task-sink {
+  gap: 10px;
+}
+
+.task-sink .txt {
+  flex: 1;
+  min-width: 0;
+}
+</style>

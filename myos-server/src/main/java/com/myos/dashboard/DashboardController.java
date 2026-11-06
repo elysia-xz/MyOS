@@ -64,6 +64,9 @@ public class DashboardController {
         out.put("recentKnowledge", recentKnowledge(uid, 5));
         out.put("aiEnabled", true);
         out.put("todayTasks", todayTasks(uid, today));
+        // 「年目标 → 月项目 → 周任务」这条主线，此前后端有 goal 的完整 CRUD
+        // 但界面上一次都没出现过，API 在空转。这里把它接到首页。
+        out.put("goalChain", goalChain(uid));
         return ApiResponse.ok(out);
     }
 
@@ -135,12 +138,30 @@ public class DashboardController {
 
     // ---------------- ③ 本月项目 ----------------
 
+    /**
+     * progress 的口径必须与 ProjectMapper.xml 的 derived 完全一致，
+     * 否则首页和项目页会显示两个不一样的百分比（这个项目吃过「同一条规则抄三遍」的亏）。
+     * 这里写成同样的 SQL，并在改动其中一处时同步另一处。
+     */
     private List<Map<String, Object>> currentProjects(Long uid) {
         return jdbc.queryForList("""
-                select id, name, description, status, progress, tech_stack
-                from project
-                where user_id = ? and status = 'IN_PROGRESS'
-                order by progress desc, id desc
+                select p.id, p.name, p.description, p.status, p.tech_stack as "techStack",
+                       p.goal_id as "goalId", p.progress_mode as "progressMode",
+                       case when p.progress_mode = 'MANUAL' then p.progress
+                            when coalesce(t.total, 0) > 0
+                              then least(100, round(100.0 * t.done / t.total))::int
+                            else p.progress end as progress,
+                       coalesce(t.total, 0) as "taskTotal",
+                       coalesce(t.done, 0) as "taskDone"
+                from project p
+                left join lateral (
+                    select count(*) as total,
+                           count(*) filter (where status = 'DONE') as done
+                    from task
+                    where task.project_id = p.id and task.user_id = p.user_id
+                ) t on true
+                where p.user_id = ? and p.status = 'IN_PROGRESS'
+                order by progress desc, p.id desc
                 limit 5
                 """, uid);
     }
@@ -176,8 +197,85 @@ public class DashboardController {
         return Long.parseLong(o.toString());
     }
 
-    // ---------------- ⑤ 最近沉淀 ----------------
+    // ---------------- ④.5 目标链路（年目标 → 项目 → 进度） ----------------
 
+    /**
+     * 把「年目标 → 项目」这一跳画出来。
+     *
+     * <p>goal 表一直有完整的 CRUD，但界面上一次都没出现过 —— 有 API、没人用的器官。
+     * 这里只做**读**：顶层目标 + 挂在它（含其子孙）下面的项目。
+     * 项目可能是挂在月目标下的，所以要沿 parent_id 往上找到根目标再归组。
+     *
+     * <p>层级最宽也就「年 → 月 → 周」三层，直接循环上溯比写递归 CTE 更好读，
+     * 另加一个 visited 集合防脏数据成环导致死循环。
+     */
+    private List<Map<String, Object>> goalChain(Long uid) {
+        List<Map<String, Object>> goals = jdbc.queryForList(
+                "select id, parent_id as \"parentId\", title, level, status, progress, "
+                        + "system_code as \"systemCode\" "
+                        + "from goal where user_id = ? order by id", uid);
+
+        Map<Long, Map<String, Object>> byId = new LinkedHashMap<>();
+        for (Map<String, Object> g : goals) byId.put(asLong(g.get("id")), g);
+
+        // 每个目标所属的根目标
+        Map<Long, Long> rootOf = new LinkedHashMap<>();
+        for (Map<String, Object> g : goals) {
+            long id = asLong(g.get("id"));
+            Map<String, Object> cur = g;
+            java.util.Set<Long> visited = new java.util.HashSet<>();
+            while (cur.get("parentId") != null && visited.add(asLong(cur.get("parentId")))) {
+                Map<String, Object> parent = byId.get(asLong(cur.get("parentId")));
+                if (parent == null) break;
+                cur = parent;
+            }
+            rootOf.put(id, asLong(cur.get("id")));
+        }
+
+        List<Map<String, Object>> projects = jdbc.queryForList("""
+                select p.id, p.name, p.status, p.goal_id as "goalId",
+                       case when p.progress_mode = 'MANUAL' then p.progress
+                            when coalesce(t.total, 0) > 0
+                              then least(100, round(100.0 * t.done / t.total))::int
+                            else p.progress end as progress,
+                       coalesce(t.total, 0) as "taskTotal",
+                       coalesce(t.done, 0) as "taskDone"
+                from project p
+                left join lateral (
+                    select count(*) as total,
+                           count(*) filter (where status = 'DONE') as done
+                    from task
+                    where task.project_id = p.id and task.user_id = p.user_id
+                ) t on true
+                where p.user_id = ? and p.goal_id is not null
+                order by p.id desc
+                """, uid);
+
+        Map<Long, List<Map<String, Object>>> grouped = new LinkedHashMap<>();
+        for (Map<String, Object> p : projects) {
+            long goalId = asLong(p.get("goalId"));
+            long root = rootOf.getOrDefault(goalId, goalId);
+            grouped.computeIfAbsent(root, k -> new ArrayList<>()).add(p);
+        }
+
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> g : goals) {
+            if (g.get("parentId") != null) continue;          // 只看顶层
+            if (!"ACTIVE".equals(String.valueOf(g.get("status")))) continue;
+            long id = asLong(g.get("id"));
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("id", id);
+            node.put("title", g.get("title"));
+            node.put("level", g.get("level"));
+            node.put("systemCode", g.get("systemCode"));
+            node.put("progress", g.get("progress"));
+            node.put("projects", grouped.getOrDefault(id, List.of()));
+            out.add(node);
+        }
+        return out;
+    }
+
+    // ---------------- ⑤ 最近沉淀 ----------------
     private List<Map<String, Object>> recentKnowledge(Long uid, int limit) {
         return jdbc.queryForList("""
                 select title, category, conclusion, learned_at

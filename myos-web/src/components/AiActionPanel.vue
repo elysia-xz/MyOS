@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { api } from '../api'
 import type { ChatMsg, PendingCall } from '../composables/useAiChat'
 
@@ -30,6 +30,36 @@ const emit = defineEmits<{
 // 生成结果由父组件持有（见下方注释），这里只保留瞬时状态
 const busy = ref('')
 const err = ref('')
+
+/* ---------------- 产出存档 ----------------
+   早先生成的日报/复盘只活在内存里，刷新即失，也进不了「月复盘 → 年度档案」。
+   现在后端 `run()` 会把每次生成的正文写进 ai_output，这里只是把它读回来。
+   列表故意放在本组件而不是父组件：它不需要跨刷新存活，刷新后重取即可。 */
+const outputs = ref<any[]>([])
+const showOutputs = ref(false)
+
+const SCENES: Record<string, string> = {
+  daily_summary: '今日总结',
+  daily_report: '日报',
+  daily_review: '今日复盘',
+  monthly_summary: '月度总结',
+  annual_report: '年度报告'
+}
+function sceneLabel(s: string) {
+  return SCENES[s] || s
+}
+
+async function loadOutputs() {
+  try {
+    const res: any = await api.aiOutputs(6)
+    outputs.value = res.data?.data || []
+  } catch {
+    // 老库没跑 v1.8 时这个接口会 500；存档只是加分项，不能因此报错刷屏
+    outputs.value = []
+  }
+}
+
+onMounted(loadOutputs)
 
 const actions = [
   { key: 'summary', label: '和 AI 讨论', run: () => api.aiDailySummary() },
@@ -115,6 +145,8 @@ async function go(a: (typeof actions)[number]) {
     const text = body?.success ? body?.data?.content : ''
     if (typeof text === 'string' && text.trim()) {
       emit('result', tidy(text))
+      // 后端已经落库，这里把存档列表刷一下 —— 让「生成过」这件事看得见
+      loadOutputs()
       emit('refresh')
     } else if (body?.success) {
       err.value = 'AI 返回了空内容，请重试或检查模型配置'
@@ -176,6 +208,25 @@ async function copy() {
       <div v-else-if="props.result" class="ai-out">
         <pre>{{ props.result }}</pre>
         <button class="ai-copy" type="button" @click="copy">{{ copied ? '已复制' : '复制正文' }}</button>
+      </div>
+
+      <!-- 产出存档：每次生成都会落库，刷新页面、换设备都还拿得回来 -->
+      <div v-if="outputs.length" class="ai-archive">
+        <button class="ai-archive-toggle" type="button" @click="showOutputs = !showOutputs">
+          {{ showOutputs ? '收起存档' : `最近产出 · ${outputs.length} 条已存档` }}
+        </button>
+        <div v-if="showOutputs" class="ai-archive-list">
+          <button
+            v-for="o in outputs"
+            :key="o.id"
+            class="ai-archive-item"
+            type="button"
+            @click="emit('result', tidy(o.content))"
+          >
+            <span class="ai-archive-scene">{{ sceneLabel(o.scene) }}</span>
+            <span class="ai-archive-time">{{ o.createdAt }}</span>
+          </button>
+        </div>
       </div>
 
       <!-- ============ 问答 / 办事（二期）============ -->
@@ -285,3 +336,66 @@ async function copy() {
     </template>
   </div>
 </template>
+
+<style scoped>
+/*
+ * 产出存档。刻意做得很轻：它是「刚才那段字还在」的证据，
+ * 不是要抢对话区的位置，所以默认收起、只占一行。
+ */
+.ai-archive {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line2);
+}
+
+.ai-archive-toggle {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 11.5px;
+  color: var(--faint);
+  cursor: pointer;
+}
+
+.ai-archive-toggle:hover {
+  color: var(--primary-ink);
+}
+
+.ai-archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+}
+
+.ai-archive-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.ai-archive-item:hover {
+  background: var(--line2);
+  color: var(--ink);
+}
+
+.ai-archive-scene {
+  font-weight: 600;
+}
+
+.ai-archive-time {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+</style>

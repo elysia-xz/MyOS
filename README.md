@@ -66,15 +66,16 @@ docker compose -f deploy/docker-compose.yml up --build
 
 适合已有自己的 PostgreSQL 实例、或需要逐步排查的情况。
 
-1. 准备数据库（**必须按此顺序**，脚本幂等可重复执行）：
+1. 准备数据库（**必须按顺序**，脚本幂等可重复执行）：
 
 ```bash
-psql -U myos -d myos -f myos-server/src/main/resources/db/schema.sql        # 基础表
-psql -U myos -d myos -f myos-server/src/main/resources/db/schema-v1.sql     # V1 增量
-psql -U myos -d myos -f myos-server/src/main/resources/db/schema-v1.1.sql   # 多端令牌表
-psql -U myos -d myos -f myos-server/src/main/resources/db/seed.sql          # 基础演示数据
-psql -U myos -d myos -f myos-server/src/main/resources/db/seed-v1.sql       # V1 演示数据
+# 推荐：一条命令按正确顺序灌完（顺序错会缺表，见 deploy/init-db.sh 里的编号）
+bash deploy/init-db.sh
 ```
+
+脚本顺序固定为：`schema.sql → schema-v1.sql → schema-v1.1 ~ v1.8 → seed.sql → seed-v1.sql`。
+**新增脚本时必须同时改三处**：`deploy/init-db.sh`、`deploy/docker-compose.yml` 的挂载编号、
+以及本节说明；漏改在 Docker 场景下表现为缺表、接口 500。
 
 2. 后端（需要 **JDK 25 + Maven 3.9+**）：
 
@@ -148,13 +149,26 @@ $env:MYOS_AI_MODEL="deepseek-chat"
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
-| 首页 | V1 新增 | 成长 Dashboard：7 系统水位 / 能力 Lv / 本月项目 / 本月完成度 / 最近沉淀 / AI 四入口 |
-| 今日 | 升级 | 任务 CRUD + **7 系统习惯打点** |
+| 首页 | V1 新增 | 成长 Dashboard：7 系统水位 / 能力 Lv / **目标链路** / 本月项目 / 本月完成度 / 最近沉淀 / AI 四入口 |
+| 今日 | 升级 | 任务 CRUD + **任务可归属项目** + 7 系统习惯打点 |
 | 学习 | 升级 | 五段式记录（来源→理解→实践→结论）+ 系统筛选 |
-| 输出 | 升级 | 内容记录 + **打卡日历** + 草稿/发布流转 |
-| 项目 | 升级 | 列表 + **Portfolio 作品集** + 详情页 + **开发日志** |
-| 财务 | V1 新增 | 现金流 / 储蓄率 / 支出构成 / **资产快照** |
+| 输出 | 升级 | 内容记录 + 打卡日历 + 草稿/发布流转 + 归属项目 |
+| 项目 | 升级 | 列表 + Portfolio 作品集 + 详情页 + 开发日志 + **项目内任务** + **进度按任务自动计算** |
+| 财务 | V1 新增 | 现金流 / 储蓄率 / 支出构成 / 资产快照 |
 | 复盘 | V1 新增 | 日 / 周 / 月复盘 + AI 月度总结 |
+
+### 一次行动，产生多个结果（已接通的部分）
+
+```text
+年目标 (goal)
+  └── 项目 (project.goal_id)
+        ├── 任务 (task.project_id) ──→ 项目进度 = 已完成任务 / 总任务
+        ├── 输出 (content_record.project_id)
+        └── 开发日志 (project_log)
+```
+
+项目进度默认 `progressMode = AUTO`，由任务完成度推导；也可以切 `MANUAL` 手填。
+历史项目没有挂任务时会回退到原来存的数值，不会跳变。
 
 ## API 一览
 
