@@ -19,7 +19,7 @@ PGROOT="${MYOS_PG_ROOT:-C:/Users/Lenovo/.workbuddy-ai/binaries/postgres}"
 PGBIN="$PGROOT/pgsql/bin"
 PGDATA="$PGROOT/data"
 PGLOG="$PGROOT/pg.log"
-PGPORT="${PGPORT:-5432}"
+PGPORT="${PGPORT:-5433}"
 
 DB_NAME="${DB_NAME:-myos}"
 DB_USER="${DB_USER:-myos}"

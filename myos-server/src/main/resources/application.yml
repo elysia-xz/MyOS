@@ -2,7 +2,11 @@ spring:
   application:
     name: myos-server
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:myos}
+    # 本地开发默认 5433，不是 5432：这台机器上另有一个项目（personal os）
+    # 用 PGlite 占了 127.0.0.1:5432。撞在一起时后端会连进别人的库，
+    # 报错信息却是「bad SQL grammar」这种指向 SQL 的假象，极难排查。
+    # Docker 场景由 docker-compose 显式传 DB_PORT=5432，不受此处影响。
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5433}/${DB_NAME:myos}
     username: ${DB_USER:myos}
     password: ${DB_PASSWORD:myos123}
     driver-class-name: org.postgresql.Driver

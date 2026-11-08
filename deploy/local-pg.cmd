@@ -7,7 +7,9 @@ rem         (or run it from any terminal: cmd /c deploy\local-pg.cmd)
 rem
 rem  What it does:
 rem    1) initdb  -> create the data directory (only on first run)
-rem    2) pg_ctl  -> start the server on localhost:5432
+rem    2) pg_ctl  -> start the server on localhost:5433
+rem       NOTE: 5433 (not 5432) because another project on this machine
+rem       (personal os / PGlite) already listens on 127.0.0.1:5432.
 rem    3) create role myos / myos123 (superuser, local dev only)
 rem    4) create database myos
 rem
@@ -23,7 +25,7 @@ if "%MYOS_PG_ROOT%"=="" (
 set "PGBIN=%PGROOT%\pgsql\bin"
 set "PGDATA=%PGROOT%\data"
 set "PGLOG=%PGROOT%\pg.log"
-set "PGPORT=5432"
+set "PGPORT=5433"
 set "DBNAME=myos"
 set "DBUSER=myos"
 set "DBPASSWORD=myos123"
